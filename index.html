@@ -2,7 +2,280 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DiskOS V1.8</title>
+    <style>
+        :root { --bg-color: #050505; --crt-border: #1a1a1a; }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; 
+            height: 100%; 
+            height: 100dvh; 
+            background-color: var(--bg-color); display: flex;
+            flex-direction: column; justify-content: center; align-items: center;
+            font-family: monospace; overflow: hidden;
+            transition: padding-top 0.2s ease, justify-content 0.2s;
+        }
+
+        /* Dynamically applied by os_parser.js when a Gamepad is loaded */
+        body.pad-active {
+            touch-action: none;
+        }
+
+        #monitor {
+            position: relative; background-color: #000;
+            border: 24px solid var(--crt-border); border-radius: 16px;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8), inset 0 0 10px #000;
+            overflow: hidden; box-sizing: border-box;
+            width: 100%; max-width: 688px; 
+            transition: transform 0.2s ease;
+        }
+
+        /* The physical width stays 100%, but it renders the 1280px internal resolution sharply */
+        canvas { 
+            display: block; width: 100%; height: auto; 
+            image-rendering: pixelated; 
+        }
+
+        .scanlines {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1));
+            background-size: 100% 4px; pointer-events: none;
+        }
+
+        .glass-glare {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            box-shadow: inset 0 0 40px rgba(255, 176, 0, 0.1); border-radius: 4px; pointer-events: none;
+        }
+
+        /* HIDDEN MOBILE INPUT */
+        #mobile-keyboard {
+            position: absolute; top: 0; left: 0; 
+            width: 10px; height: 10px; 
+            opacity: 0; pointer-events: none; z-index: -1; 
+            border: none; outline: none;
+        }
+
+        /* GAMEPAD STYLES */
+        #gamepad {
+            display: none; width: 100%; max-width: 688px; height: 120px; margin-top: 10px;
+            justify-content: space-between; align-items: center; padding: 0 20px;
+            box-sizing: border-box; user-select: none;
+        }
+
+        .pad-section { display: flex; gap: 15px; align-items: center; }
+
+        .btn {
+            background-color: #333; border: 4px solid #1a1a1a; border-radius: 50%;
+            color: #FFB000; font-weight: bold; font-size: 20px; display: flex;
+            justify-content: center; align-items: center;
+            box-shadow: 0 4px 0 #111, inset 0 -4px 10px rgba(0,0,0,0.5); cursor: pointer;
+        }
+
+        .btn:active { transform: translateY(4px); box-shadow: 0 0 0 #111, inset 0 4px 10px rgba(0,0,0,0.8); }
+        .btn-dpad { width: 60px; height: 60px; border-radius: 10px; }
+        .btn-action { width: 70px; height: 70px; }
+        .btn-small { width: 45px; height: 45px; font-size: 12px; background-color: #522; }
+
+        /* VERTICAL MOBILE EXCEPTIONS */
+        @media (max-width: 700px) and (orientation: portrait) {
+            #monitor { border-width: 10px; max-width: 96vw; }
+            #gamepad { max-width: 96vw; padding: 0 10px; }
+            
+            body.typing-mode {
+                justify-content: flex-start !important;
+                padding-top: 5vh;
+            }
+            body.typing-mode #gamepad {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="monitor">
+        <input type="text" id="mobile-keyboard" autocorrect="off" autocapitalize="none" spellcheck="false" autocomplete="off">
+        <canvas id="screen" width="1280" height="640"></canvas>
+        <div class="scanlines"></div>
+        <div class="glass-glare"></div>
+    </div>
+
+    <div id="gamepad">
+        <div id="pad-left" class="pad-section"></div>
+        <div id="pad-right" class="pad-section"></div>
+    </div>
+
+    <script src="os_kernel.js"></script>
+    <script src="os_parser.js"></script>
+
+    <script>
+        const canvas = document.getElementById('screen');
+        const ctx = canvas.getContext('2d');
+        const mobileInput = document.getElementById('mobile-keyboard');
+        
+        // 20x20 Cells perfectly divide into the 1280x640 canvas (64 cols x 32 rows)
+        const CELL_WIDTH = 20; 
+        const CELL_HEIGHT = 20;
+        
+        let blinkTimer = 0; 
+        let cursorVisible = true;
+
+        // ==========================================
+        // MOBILE KEYBOARD TOGGLE
+        // ==========================================
+        mobileInput.addEventListener('focus', () => document.body.classList.add('typing-mode'));
+        mobileInput.addEventListener('blur', () => document.body.classList.remove('typing-mode'));
+
+        // ==========================================
+        // KEYBOARD I/O
+        // ==========================================
+        window.addEventListener('keydown', (e) => {
+            if(["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
+            Parser.handleKey(e.key);
+            Parser.setKeyState(e.key, true);
+        });
+
+        window.addEventListener('keyup', (e) => { Parser.setKeyState(e.key, false); });
+
+        // ==========================================
+        // MOUSE / TOUCH I/O & MOBILE KEYBOARD
+        // ==========================================
+        function handlePointer(e, isActive) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            let x = (clientX - rect.left) * scaleX;
+            let y = (clientY - rect.top) * scaleY;
+            
+            let gridX = Math.floor(x / CELL_WIDTH);
+            let gridY = Math.floor(y / CELL_HEIGHT);
+            Parser.setTouchState(isActive ? 1 : 0, gridX, gridY);
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            mobileInput.focus();
+            handlePointer(e, true);
+        });
+        window.addEventListener('mouseup', (e) => Parser.setTouchState(0, Parser.touchX, Parser.touchY));
+        canvas.addEventListener('mousemove', (e) => { if (Parser.touchActive) handlePointer(e, true); });
+
+        canvas.addEventListener('touchstart', (e) => { 
+            if (document.body.classList.contains('pad-active')) {
+                e.preventDefault(); 
+            }
+            mobileInput.focus(); 
+            handlePointer(e, true); 
+        }, {passive: false});
+        
+        canvas.addEventListener('touchmove', (e) => { 
+            if (document.body.classList.contains('pad-active')) {
+                e.preventDefault(); 
+            }
+            if (Parser.touchActive) handlePointer(e, true); 
+        }, {passive: false});
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault(); 
+            mobileInput.focus(); 
+        }, {passive: false});
+
+        window.addEventListener('touchend', (e) => { 
+            Parser.setTouchState(0, Parser.touchX, Parser.touchY); 
+        });
+
+        // ==========================================
+        // INPUT EVENT ROUTING
+        // ==========================================
+        mobileInput.addEventListener('input', (e) => {
+            let val = e.target.value;
+            if (val.length > 0) {
+                Parser.handleKey(val.charAt(val.length - 1));
+                e.target.value = "";    
+            }
+        });
+
+        mobileInput.addEventListener('keydown', (e) => {
+            if (e.key === "Enter" || e.key === "Backspace") Parser.handleKey(e.key);
+        });
+
+        // ==========================================
+        // DRAG AND DROP INSTALLATION
+        // ==========================================
+        window.addEventListener('dragover', (e) => {
+            e.preventDefault(); 
+            e.dataTransfer.dropEffect = 'copy';
+        });
+
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (e.dataTransfer.files.length > 0) {
+                const file = e.dataTransfer.files[0];
+                const reader = new FileReader();
+                reader.onload = event => { Kernel.processImport(event.target.result, file.name); };
+                reader.readAsText(file);
+            }
+        });
+
+        // ==========================================
+        // MAIN RENDER LOOP (60 FPS)
+        // ==========================================
+        function render() {
+            if (Parser.isRunning) {
+                for(let i=0; i < 20; i++) {
+                    if(!Parser.isRunning || Parser.waitingForTimer) break;
+                    Parser.executeStep();
+                }
+            }
+
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // The crisp, bold 16px font scaled for Retina
+            ctx.font = "bold 16px monospace";
+            ctx.textBaseline = "top";
+
+            for (let y = 0; y < Parser.rows; y++) {
+                for (let x = 0; x < Parser.cols; x++) {
+                    let idx = Parser.getIndex(x, y);
+                    let cell = Parser.vram[idx];
+                    if (cell.bg !== '#000000') {
+                        ctx.fillStyle = cell.bg;
+                        ctx.fillRect(x * CELL_WIDTH, y * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);
+                    }
+                    if (cell.char !== ' ') {
+                        ctx.fillStyle = cell.fg;
+                        ctx.fillText(cell.char, x * CELL_WIDTH, y * CELL_HEIGHT);
+                    }
+                }
+            }
+
+            blinkTimer++;
+            if (blinkTimer > 30) { cursorVisible = !cursorVisible; blinkTimer = 0; }
+            if (!Parser.isRunning && cursorVisible) {
+                ctx.fillStyle = "#FFB000"; 
+                ctx.fillRect(Parser.cursorX * CELL_WIDTH, Parser.cursorY * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);
+                let idx = Parser.getIndex(Parser.cursorX, Parser.cursorY);
+                if (Parser.vram[idx] && Parser.vram[idx].char !== ' ') {
+                    ctx.fillStyle = "#000000";
+                    ctx.fillText(Parser.vram[idx].char, Parser.cursorX * CELL_WIDTH, Parser.cursorY * CELL_HEIGHT);
+                }
+            }
+            requestAnimationFrame(render);
+        }
+        render();
+    </script>
+</body>
+</html>
+" content="width=device-width, initial-scale=1.0">
     <title>DiskOS V1.8</title>
     <style>
         :root { --bg-color: #050505; --crt-border: #1a1a1a; }
