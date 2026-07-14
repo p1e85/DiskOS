@@ -38,12 +38,30 @@ const Parser = {
         "----          : TOGGLE RAW DATA"
     ],
 
+    // ==========================================
+    // DYNAMIC ZOOM & PAD TOGGLE
+    // ==========================================
+    setPadMode: function(isActive) {
+        const padContainer = document.getElementById('gamepad');
+        let meta = document.querySelector('meta[name="viewport"]');
+        if (isActive) {
+            document.body.classList.add('pad-active');
+            if (padContainer) padContainer.style.display = 'flex';
+            if (meta) meta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
+        } else {
+            document.body.classList.remove('pad-active');
+            if (padContainer) padContainer.style.display = 'none';
+            if (meta) meta.content = "width=device-width, initial-scale=1.0";
+        }
+    },
+
     init: function() {
         for (let i = 0; i < this.cols * this.rows; i++) {
             this.vram[i] = { char: ' ', fg: '#FFB000', bg: '#000000' };
         }
         this.cursorX = 0;
         this.cursorY = 0;
+        this.setPadMode(false); // Unlock zoom on boot
         this.printLine("*** DiskOS V1.8 ***");
         this.printLine("1024K VIRTUAL DISK MOUNTED");
         this.printLine("READY.");
@@ -199,6 +217,7 @@ const Parser = {
             if (menu === "FILE") {
                 if (action === "NEW") {
                     this.textBuffer = []; this.variables = {}; this.sprites = {}; this.rawBuffer = [];
+                    this.setPadMode(false); // Unlock zoom and hide pad
                     this.printLine("MEMORY CLEARED.");
                 } else if (action === "SAVE") {
                     let filename = parts[2] ? parts[2].replace(/"/g, "") : "UNTITLED.diskCODE";
@@ -300,7 +319,12 @@ const Parser = {
             this.checkScroll();
 
             if (fwUpper === "CLEAR_SCR") {
-                this.init(); 
+                for (let i = 0; i < this.cols * this.rows; i++) {
+                    this.vram[i].char = ' ';
+                    this.vram[i].bg = '#000000'; 
+                }
+                this.cursorX = 0;
+                this.cursorY = 0; 
                 this.cursorY--; 
             } 
             else if (fwUpper === "HELP") {
@@ -320,6 +344,7 @@ const Parser = {
                 this.variables = {}; 
                 this.sprites = {}; 
                 this.rawBuffer = [];
+                this.setPadMode(false); // Unlock zoom and hide pad
                 this.printLine("MEMORY CLEARED.");
                 this.printLine("READY.");
                 this.cursorY--;
@@ -490,7 +515,6 @@ const Parser = {
         }
 
         if (fileType === "diskPAD") {
-            const padContainer = document.getElementById('gamepad');
             const padLeft = document.getElementById('pad-left');
             const padRight = document.getElementById('pad-right');
             
@@ -520,7 +544,7 @@ const Parser = {
                 }
             }
             
-            padContainer.style.display = 'flex';
+            this.setPadMode(true); // Lock screen zoom and show the pad
             this.printLine("REGISTERED " + itemsAdded + " PAD ELEMENTS.");
             this.printLine("READY.");
             return; 
