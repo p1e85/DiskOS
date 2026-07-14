@@ -157,8 +157,9 @@ function render() {
     }
     
     // 2. CLEAR CANVAS: Paint the entire screen black for a fresh frame
-    ctx.fillStyle = "#000000";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = Parser.systemColor; 
+ctx.fillRect(Parser.cursorX * CELL_WIDTH, Parser.cursorY * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);
+
     
     // 3. SET FONT: Use crisp Retina scaling
     ctx.font = "bold 16px monospace";
