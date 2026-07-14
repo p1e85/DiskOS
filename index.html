@@ -9,18 +9,14 @@
 
         body, html {
             margin: 0; padding: 0; width: 100%; 
-            height: 100%; 
-            height: 100dvh; 
+            height: 100%; height: 100dvh; 
             background-color: var(--bg-color); display: flex;
             flex-direction: column; justify-content: center; align-items: center;
             font-family: monospace; overflow: hidden;
             transition: padding-top 0.2s ease, justify-content 0.2s;
         }
 
-        /* Dynamically applied by os_parser.js when a Gamepad is loaded */
-        body.pad-active {
-            touch-action: none;
-        }
+        body.pad-active { touch-action: none; }
 
         #monitor {
             position: relative; background-color: #000;
@@ -31,7 +27,7 @@
             transition: transform 0.2s ease;
         }
 
-        /* THE TRANSPARENT OVERLAY HACK */
+        /* The transparent overlay textarea */
         #mobile-keyboard {
             position: absolute; top: 0; left: 0; right: 0; bottom: 0;
             width: 100%; height: 100%; 
@@ -40,30 +36,21 @@
             color: transparent; background: transparent;
         }
 
-        /* Disable the input overlay so the canvas gets touches during gameplay */
-        body.pad-active #mobile-keyboard {
-            pointer-events: none;
-        }
+        body.pad-active #mobile-keyboard { pointer-events: none; }
 
-        canvas { 
-            display: block; width: 100%; height: auto; 
-            image-rendering: pixelated; 
-        }
+        canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; }
 
         .scanlines {
             position: absolute; top: 0; left: 0; right: 0; bottom: 0;
             background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1));
-            background-size: 100% 4px; pointer-events: none;
-            z-index: 5;
+            background-size: 100% 4px; pointer-events: none; z-index: 5;
         }
 
         .glass-glare {
             position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-            box-shadow: inset 0 0 40px rgba(255, 176, 0, 0.1); border-radius: 4px; pointer-events: none;
-            z-index: 5;
+            box-shadow: inset 0 0 40px rgba(255, 176, 0, 0.1); border-radius: 4px; pointer-events: none; z-index: 5;
         }
 
-        /* GAMEPAD STYLES */
         #gamepad {
             display: none; width: 100%; max-width: 688px; height: 120px; margin-top: 10px;
             justify-content: space-between; align-items: center; padding: 0 20px;
@@ -84,18 +71,11 @@
         .btn-action { width: 70px; height: 70px; }
         .btn-small { width: 45px; height: 45px; font-size: 12px; background-color: #522; }
 
-        /* VERTICAL MOBILE EXCEPTIONS */
         @media (max-width: 700px) and (orientation: portrait) {
             #monitor { border-width: 10px; max-width: 96vw; }
             #gamepad { max-width: 96vw; padding: 0 10px; }
-            
-            body.typing-mode {
-                justify-content: flex-start !important;
-                padding-top: 5vh;
-            }
-            body.typing-mode #gamepad {
-                display: none !important;
-            }
+            body.typing-mode { justify-content: flex-start !important; padding-top: 5vh; }
+            body.typing-mode #gamepad { display: none !important; }
         }
     </style>
 </head>
@@ -121,21 +101,12 @@
         const ctx = canvas.getContext('2d');
         const overlay = document.getElementById('mobile-keyboard');
         const monitor = document.getElementById('monitor');
-        
-        const CELL_WIDTH = 20; 
-        const CELL_HEIGHT = 20;
-        let blinkTimer = 0; 
-        let cursorVisible = true;
+        const CELL_WIDTH = 20; const CELL_HEIGHT = 20;
+        let blinkTimer = 0; let cursorVisible = true;
 
-        // ==========================================
-        // MOBILE KEYBOARD TOGGLE
-        // ==========================================
         overlay.addEventListener('focus', () => document.body.classList.add('typing-mode'));
         overlay.addEventListener('blur', () => document.body.classList.remove('typing-mode'));
 
-        // ==========================================
-        // KEYBOARD I/O
-        // ==========================================
         window.addEventListener('keydown', (e) => {
             if(["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
                 if(document.body.classList.contains('pad-active')) e.preventDefault();
@@ -146,69 +117,44 @@
 
         window.addEventListener('keyup', (e) => { Parser.setKeyState(e.key, false); });
 
-        // ==========================================
-        // MOUSE / TOUCH I/O ROUTING
-        // ==========================================
         function handlePointer(e, isActive) {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
             const scaleY = canvas.height / rect.height;
             let clientX = e.touches ? e.touches[0].clientX : e.clientX;
             let clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            
             let x = (clientX - rect.left) * scaleX;
             let y = (clientY - rect.top) * scaleY;
-            
-            let gridX = Math.floor(x / CELL_WIDTH);
-            let gridY = Math.floor(y / CELL_HEIGHT);
-            Parser.setTouchState(isActive ? 1 : 0, gridX, gridY);
+            Parser.setTouchState(isActive ? 1 : 0, Math.floor(x / CELL_WIDTH), Math.floor(y / CELL_HEIGHT));
         }
 
-        // Catch pointer events on the monitor container
         monitor.addEventListener('mousedown', (e) => {
             if (!document.body.classList.contains('pad-active')) overlay.focus();
             handlePointer(e, true);
         });
-        monitor.addEventListener('mousemove', (e) => { if (Parser.touchActive) handlePointer(e, true); });
-        window.addEventListener('mouseup', (e) => Parser.setTouchState(0, Parser.touchX, Parser.touchY));
 
         monitor.addEventListener('touchstart', (e) => { 
-            if (document.body.classList.contains('pad-active')) {
-                e.preventDefault(); // Lock zoom during gameplay
-            }
+            if (document.body.classList.contains('pad-active')) e.preventDefault(); 
             handlePointer(e, true); 
         }, {passive: false});
-        
-        monitor.addEventListener('touchmove', (e) => { 
-            if (document.body.classList.contains('pad-active')) {
-                e.preventDefault(); 
-            }
-            if (Parser.touchActive) handlePointer(e, true); 
+
+        monitor.addEventListener('touchend', (e) => {
+            e.preventDefault(); 
+            overlay.focus();
+            Parser.setTouchState(0, Parser.touchX, Parser.touchY);
         }, {passive: false});
 
-        window.addEventListener('touchend', (e) => { 
-            Parser.setTouchState(0, Parser.touchX, Parser.touchY); 
-        });
-
-        // ==========================================
-        // TEXTAREA INPUT AND NATIVE PASTE
-        // ==========================================
-        // Ensure we never lose focus on the overlay
-overlay.addEventListener('blur', () => {
-    // If the keyboard is meant to be open, force it back
-    if (document.body.classList.contains('typing-mode')) {
-        setTimeout(() => overlay.focus({ preventScroll: true }), 50);
-    }
-});
-
+        // FIXED PASTE INTERCEPTOR
+        overlay.addEventListener('paste', (e) => {
+            e.preventDefault();
+            let pasteText = (e.clipboardData || window.clipboardData).getData('text');
             Parser.pasteFromClipboard(pasteText);
-            overlay.value = ""; // Clear buffer
+            overlay.value = ""; 
         });
 
         overlay.addEventListener('input', (e) => {
             let val = e.target.value;
             if (val.length > 0) {
-                // Only send the last typed character
                 Parser.handleKey(val.charAt(val.length - 1));
                 overlay.value = "";    
             }
@@ -216,42 +162,31 @@ overlay.addEventListener('blur', () => {
 
         overlay.addEventListener('keydown', (e) => {
             if (e.key === "Enter" || e.key === "Backspace") {
-                e.preventDefault(); // Stop newlines inside the textarea
+                e.preventDefault(); 
                 Parser.handleKey(e.key);
             }
         });
 
-        // ==========================================
-        // DRAG AND DROP INSTALLATION (.diskROM)
-        // ==========================================
-        window.addEventListener('dragover', (e) => {
-            e.preventDefault(); 
-            e.dataTransfer.dropEffect = 'copy';
-        });
-
-        window.addEventListener('drop', (e) => {
-            e.preventDefault();
-            if (e.dataTransfer.files.length > 0) {
-                const file = e.dataTransfer.files[0];
-                const reader = new FileReader();
-                reader.onload = event => { Kernel.processImport(event.target.result, file.name); };
-                reader.readAsText(file);
+        overlay.addEventListener('blur', () => {
+            if (document.body.classList.contains('typing-mode')) {
+                setTimeout(() => overlay.focus({ preventScroll: true }), 50);
             }
         });
 
-// Force the invisible textarea to maintain focus at all times
-function ensureFocus() {
-    if (document.activeElement !== overlay) {
-        overlay.focus({ preventScroll: true });
-    }
-}
-// Run this check every 500ms
-setInterval(ensureFocus, 500);
+        setInterval(() => {
+            if (document.activeElement !== overlay) overlay.focus({ preventScroll: true });
+        }, 500);
 
+        window.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (e.dataTransfer.files.length > 0) {
+                const reader = new FileReader();
+                reader.onload = event => { Kernel.processImport(event.target.result, e.dataTransfer.files[0].name); };
+                reader.readAsText(e.dataTransfer.files[0]);
+            }
+        });
 
-        // ==========================================
-        // MAIN RENDER LOOP (60 FPS)
-        // ==========================================
         function render() {
             if (Parser.isRunning) {
                 for(let i=0; i < 20; i++) {
@@ -259,13 +194,10 @@ setInterval(ensureFocus, 500);
                     Parser.executeStep();
                 }
             }
-
             ctx.fillStyle = "#000000";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
             ctx.font = "bold 16px monospace";
             ctx.textBaseline = "top";
-
             for (let y = 0; y < Parser.rows; y++) {
                 for (let x = 0; x < Parser.cols; x++) {
                     let idx = Parser.getIndex(x, y);
@@ -280,7 +212,6 @@ setInterval(ensureFocus, 500);
                     }
                 }
             }
-
             blinkTimer++;
             if (blinkTimer > 30) { cursorVisible = !cursorVisible; blinkTimer = 0; }
             if (!Parser.isRunning && cursorVisible) {
