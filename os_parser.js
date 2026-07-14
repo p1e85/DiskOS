@@ -2,26 +2,29 @@ const Parser = {
     // ==========================================
     // 1. SYSTEM MEMORY & HARDWARE STATE
     // ==========================================
-    cols: 64, rows: 32,                 // The physical 64x32 cell grid
-    cursorX: 0, cursorY: 0,             // Where the blinking cursor currently sits
-    vram: [],                           // Video RAM array holding the 2048 screen cells
-    textBuffer: [],                     // Code memory (Standard line-numbered scripts)
-    isRunning: false,                   // True if a diskCODE program is executing
-    currentLineIndex: 0,                // Which line of code the OS is currently running
-    variables: {},                      // Storage for user variables (VAR command)
-    sprites: {},                        // Storage for custom 1-bit sprites
-    customMenus: {},                    // Storage for compiled $MENU GUI definitions
+    cols: 64, rows: 32,                 
+    cursorX: 0, cursorY: 0,             
+    vram: [],                           
+    textBuffer: [],                     
+    isRunning: false,                   
+    currentLineIndex: 0,                
+    variables: {},                      
+    sprites: {},                        
+    customMenus: {},                    
     
-    // I/O States
-    waitingForKey: false, targetVar: "", // Used by GET_KEY to pause execution
-    waitingForTimer: false,             // Used by WAIT command to pause execution
-    keysDown: {},                       // Tracks physical keyboard keys held down
-    touchActive: 0, touchX: 0, touchY: 0, // Tracks mouse/touch states for the monitor
-    audioCtx: null,                     // The WebAudio synthesizer context
+    waitingForKey: false, targetVar: "", 
+    waitingForTimer: false,             
+    keysDown: {},                       
+    touchActive: 0, touchX: 0, touchY: 0, 
+    audioCtx: null,                     
 
-    // RAW Mode States
-    isCapturingRaw: false,              // True if ---- was typed
-    rawBuffer: [],                      // Storage for raw text (.diskGUI / .diskPAD)
+    isCapturingRaw: false,              
+    rawBuffer: [],                      
+    rawFileType: "RAW", // Tracks what kind of file is currently sitting in the rawBuffer
+
+    // Theme Variables
+    systemColor: '#FFB000',
+    systemBgColor: '#000000',
 
     // ==========================================
     // 2. HELP DOCUMENTATION
@@ -57,10 +60,15 @@ const Parser = {
     // 3. UI & HARDWARE CONTROLLERS
     // ==========================================
     
-    // Toggles the on-screen Gamepad and locks the browser zoom during gameplay
+    resetTheme: function() {
+        this.systemColor = '#FFB000';
+        this.systemBgColor = '#000000';
+        document.documentElement.style.setProperty('--bg-color', '#050505');
+        document.documentElement.style.setProperty('--crt-border', '#1a1a1a');
+    },
+
     setPadMode: function(isActive) {
         const padContainer = document.getElementById('gamepad');
-        let meta = document.querySelector('meta[name="viewport"]');
         if (isActive) {
             document.body.classList.add('pad-active');
             if (padContainer) padContainer.style.display = 'flex';
@@ -70,10 +78,10 @@ const Parser = {
         }
     },
 
-    // Boots up the OS and clears the screen to black/amber
     init: function() {
+        this.resetTheme();
         for (let i = 0; i < this.cols * this.rows; i++) {
-            this.vram[i] = { char: ' ', fg: '#FFB000', bg: '#000000' };
+            this.vram[i] = { char: ' ', fg: this.systemColor, bg: this.systemBgColor };
         }
         this.cursorX = 0;
         this.cursorY = 0;
@@ -106,7 +114,9 @@ const Parser = {
                 this.cursorX = 0;
                 this.cursorY++;
             }
-            this.vram[this.getIndex(this.cursorX, this.cursorY)].char = text[i];
+            let idx = this.getIndex(this.cursorX, this.cursorY);
+            this.vram[idx].char = text[i];
+            this.vram[idx].fg = this.systemColor;
             this.cursorX++;
         }
         this.cursorX = 0;
@@ -121,13 +131,14 @@ const Parser = {
                     let current = this.getIndex(x, y);
                     let above = this.getIndex(x, y - 1);
                     this.vram[above].char = this.vram[current].char;
+                    this.vram[above].fg = this.vram[current].fg;
                     this.vram[above].bg = this.vram[current].bg; 
                 }
             }
             for (let x = 0; x < this.cols; x++) {
                 let bottomIdx = this.getIndex(x, this.rows - 1);
                 this.vram[bottomIdx].char = ' ';
-                this.vram[bottomIdx].bg = '#000000';
+                this.vram[bottomIdx].bg = this.systemBgColor;
             }
             this.cursorY = this.rows - 1;
         }
@@ -175,13 +186,15 @@ const Parser = {
                 this.cursorX--;
                 let idx = this.getIndex(this.cursorX, this.cursorY);
                 this.vram[idx].char = ' ';
-                this.vram[idx].bg = '#000000'; 
+                this.vram[idx].bg = this.systemBgColor; 
             }
             return;
         }
         
         if (key.length === 1) {
-            this.vram[this.getIndex(this.cursorX, this.cursorY)].char = key.toUpperCase();
+            let idx = this.getIndex(this.cursorX, this.cursorY);
+            this.vram[idx].char = key.toUpperCase();
+            this.vram[idx].fg = this.systemColor;
             this.cursorX++;
             if (this.cursorX >= this.cols) {
                 this.cursorX = 0;
@@ -215,14 +228,13 @@ const Parser = {
         let cmd = rowString.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
         if (cmd === "") return;
 
-        // Toggle RAW data mode
         if (cmd === "----") {
             this.isCapturingRaw = !this.isCapturingRaw;
             if (this.isCapturingRaw) {
-                this.rawBuffer = [];
-                this.printLine("RAW MODE: ON");
+                this.rawFileType = "RAW"; // Reset the tracker when manually typing
+                this.printLine("RAW MODE: ON (APPENDING)");
             } else {
-                this.printLine("RAW MODE: OFF (" + this.rawBuffer.length + " LINES)");
+                this.printLine("RAW MODE: OFF (" + this.rawBuffer.length + " LINES TOTAL)");
                 this.printLine("READY.");
             }
             this.cursorY++; this.checkScroll();
@@ -230,6 +242,12 @@ const Parser = {
         }
 
         if (this.isCapturingRaw) {
+            let chk = cmd.toUpperCase();
+            if (chk === "LIST" || chk === "RUN" || chk === "SAVE" || chk === "$FILE") {
+                this.printLine("?EXIT RAW MODE (----) TO USE " + chk);
+                this.cursorY++; this.checkScroll();
+                return;
+            }
             this.rawBuffer.push(cmd);
             this.printLine(">");
             this.cursorY++; this.checkScroll();
@@ -254,7 +272,8 @@ const Parser = {
                 if (action === "NEW") {
                     this.textBuffer = []; this.variables = {}; this.sprites = {}; this.rawBuffer = []; this.customMenus = {};
                     this.setPadMode(false);
-                    this.printLine("MEMORY CLEARED.");
+                    this.resetTheme();
+                    this.printLine("MEMORY CLEARED. THEME RESET.");
                 } else if (action === "SAVE") {
                     let filename = parts[2] ? parts[2].replace(/"/g, "") : "UNTITLED.diskCODE";
                     let payload = "";
@@ -363,7 +382,7 @@ const Parser = {
             if (fwUpper === "CLEAR_SCR") {
                 for (let i = 0; i < this.cols * this.rows; i++) {
                     this.vram[i].char = ' ';
-                    this.vram[i].bg = '#000000'; 
+                    this.vram[i].bg = this.systemBgColor; 
                 }
                 this.cursorX = 0;
                 this.cursorY = 0; 
@@ -376,21 +395,27 @@ const Parser = {
                 this.cursorY--;
             }
             else if (fwUpper === "LIST") {
-                // Now intelligently lists whatever is actively in memory (CODE or GUI/PAD)
+                let isEmpty = true;
                 if (this.textBuffer.length > 0) {
+                    this.printLine("--- CODE MEMORY ---");
                     for (let i = 0; i < this.textBuffer.length; i++) this.printLine(this.textBuffer[i].line + " " + this.textBuffer[i].code);
-                } else if (this.rawBuffer.length > 0) {
-                    for (let i = 0; i < this.rawBuffer.length; i++) this.printLine(this.rawBuffer[i]);
-                } else {
-                    this.printLine("MEMORY IS EMPTY.");
+                    isEmpty = false;
                 }
+                if (this.rawBuffer.length > 0) {
+                    this.printLine("--- RAW DATA MEMORY ---");
+                    for (let i = 0; i < this.rawBuffer.length; i++) this.printLine(this.rawBuffer[i]);
+                    isEmpty = false;
+                }
+                if (isEmpty) this.printLine("MEMORY IS EMPTY.");
+                
                 this.printLine("READY.");
                 this.cursorY--;
             } 
             else if (fwUpper === "NEW") {
                 this.textBuffer = []; this.variables = {}; this.sprites = {}; this.rawBuffer = []; this.customMenus = {};
                 this.setPadMode(false);
-                this.printLine("MEMORY CLEARED.");
+                this.resetTheme();
+                this.printLine("MEMORY CLEARED. THEME RESET.");
                 this.printLine("READY.");
                 this.cursorY--;
             }
@@ -521,7 +546,6 @@ const Parser = {
     // ==========================================
     
     runCode: function() {
-        // SCENARIO A: Standard executable code loaded in textBuffer
         if (this.textBuffer.length > 0) {
             try {
                 if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -550,33 +574,67 @@ const Parser = {
             this.keysDown = {}; 
             this.touchActive = 0;
         } 
-        // SCENARIO B: A Raw File (.diskGUI or .diskPAD) is waiting to be compiled!
         else if (this.rawBuffer.length > 0) {
-            let fileType = "RAW";
-            for (let i = 0; i < Math.min(5, this.rawBuffer.length); i++) {
-                if (this.rawBuffer[i].toUpperCase().startsWith("TYPE: DISKGUI")) fileType = "diskGUI";
-                if (this.rawBuffer[i].toUpperCase().startsWith("TYPE: DISKPAD")) fileType = "diskPAD";
+            let fileType = this.rawFileType;
+            
+            // SMART SNIFFER: If typed manually (RAW), intelligently scan syntax to guess the file type!
+            if (fileType === "RAW") {
+                for (let i = 0; i < this.rawBuffer.length; i++) {
+                    let chk = this.rawBuffer[i].toUpperCase();
+                    if (chk.includes("DEF_MENU") || chk.includes("PAGE_BG") || chk.includes("TEXT_COLOR")) { fileType = "DISKGUI"; break; }
+                    if (chk.includes("DPAD:") || chk.includes("BTN:")) { fileType = "DISKPAD"; break; }
+                }
             }
 
-            if (fileType === "diskGUI") {
+            if (fileType === "DISKGUI") {
                 this.customMenus = {};
                 let currentMenu = null;
                 let itemsAdded = 0;
+                let stylesApplied = 0;
+
                 for (let i = 0; i < this.rawBuffer.length; i++) {
                     let line = this.rawBuffer[i].trim();
                     let upperLine = line.toUpperCase();
-                    if (upperLine.startsWith("DEF_MENU ")) {
+                    
+                    // --- CSS STYLING ENGINE ---
+                    if (upperLine.startsWith("PAGE_BG ")) {
+                        document.documentElement.style.setProperty('--bg-color', line.substring(8).trim());
+                        stylesApplied++;
+                    }
+                    else if (upperLine.startsWith("BORDER_COLOR ")) {
+                        document.documentElement.style.setProperty('--crt-border', line.substring(13).trim());
+                        stylesApplied++;
+                    }
+                    else if (upperLine.startsWith("TEXT_COLOR ")) {
+                        let newColor = this.resolveColor(line.substring(11).trim());
+                        for(let c=0; c<this.vram.length; c++) {
+                            if (this.vram[c].fg === this.systemColor) this.vram[c].fg = newColor;
+                        }
+                        this.systemColor = newColor;
+                        stylesApplied++;
+                    }
+                    else if (upperLine.startsWith("SCREEN_COLOR ")) {
+                        let newBg = this.resolveColor(line.substring(13).trim());
+                        for(let c=0; c<this.vram.length; c++) {
+                            if (this.vram[c].bg === this.systemBgColor) this.vram[c].bg = newBg;
+                        }
+                        this.systemBgColor = newBg;
+                        stylesApplied++;
+                    }
+                    // --- MENU BUILDER ---
+                    else if (upperLine.startsWith("DEF_MENU ")) {
                         currentMenu = line.substring(9).replace("$", "").trim().toUpperCase();
                         this.customMenus[currentMenu] = [];
-                    } else if (upperLine.startsWith("DEF_ITEM ") && currentMenu) {
+                    } 
+                    else if (upperLine.startsWith("DEF_ITEM ") && currentMenu) {
                         this.customMenus[currentMenu].push(line.substring(9).trim().toUpperCase());
                         itemsAdded++;
                     }
                 }
-                this.printLine("GUI COMPILED: " + itemsAdded + " ITEMS.");
+                this.printLine("GUI COMPILED: " + itemsAdded + " MENUS, " + stylesApplied + " STYLES.");
                 this.printLine("READY.");
             } 
-            else if (fileType === "diskPAD") {
+            else if (fileType === "DISKPAD") {
                 const padLeft = document.getElementById('pad-left');
                 const padRight = document.getElementById('pad-right');
                 if (padLeft && padRight) {
@@ -626,16 +684,11 @@ const Parser = {
         this.printLine("LOADING " + filename + "...");
         let lines = fileContent.split('\n');
         
-        let fileType = "diskCODE"; 
-        for (let i = 0; i < Math.min(5, lines.length); i++) {
-            if (lines[i].toUpperCase().startsWith("TYPE: DISKGUI")) fileType = "diskGUI";
-            if (lines[i].toUpperCase().startsWith("TYPE: DISKPAD")) fileType = "diskPAD";
-        }
-
-        // GUI and PAD files are now placed securely into the rawBuffer.
-        // This lets the user LIST them, EDIT them, and use RUN to compile them!
-        if (fileType === "diskGUI" || fileType === "diskPAD") {
-            this.textBuffer = []; // Clear standard memory to avoid conflicts
+        let ext = filename.split('.').pop().toUpperCase();
+        
+        if (ext === "DISKGUI" || ext === "DISKPAD") {
+            this.rawFileType = ext; 
+            this.textBuffer = []; 
             this.rawBuffer = [];
             let linesAdded = 0;
             for (let i = 0; i < lines.length; i++) {
@@ -650,9 +703,9 @@ const Parser = {
             return; 
         }
 
-        // --- DISKCODE COMPILER ---
         let isPayload = false;
-        this.rawBuffer = []; // Clear raw memory to avoid conflicts
+        this.rawFileType = "RAW";
+        this.rawBuffer = []; 
         this.textBuffer = []; 
         let linesAdded = 0;
         
@@ -727,7 +780,7 @@ const Parser = {
             GREEN: "#00FF00", BLACK: "#000000", WHITE: "#FFFFFF", 
             YELLOW: "#FFFF00", PURPLE: "#FF00FF", CYAN: "#00FFFF" 
         };
-        if (!c) return "#FFB000";
+        if (!c) return this.systemColor;
         return colors[c.toUpperCase()] || c; 
     },
 
@@ -1019,7 +1072,7 @@ const Parser = {
         else if (cmd === "CLEAR_SCR") {
             for (let i = 0; i < this.cols * this.rows; i++) {
                 this.vram[i].char = ' ';
-                this.vram[i].bg = '#000000'; 
+                this.vram[i].bg = this.systemBgColor; 
             }
             this.cursorX = 0;
             this.cursorY = 0; 
