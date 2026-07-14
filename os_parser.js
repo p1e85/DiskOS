@@ -8,12 +8,11 @@ const Parser = {
     keysDown: {}, touchActive: 0, touchX: 0, touchY: 0,
     audioCtx: null,
 
-    // Raw Capture Mode Variables
     isCapturingRaw: false,
     rawBuffer: [],
 
     HELP_TEXT: [
-        "--- DISKOS V1.5 COMMANDS ---",
+        "--- DISKOS V1.8 COMMANDS ---",
         "PRINT <val>      : OUTPUT TEXT",
         "VAR <name>=<val> : SET VARIABLE",
         "DIM <arr> <size> : CREATE ARRAY",
@@ -45,7 +44,7 @@ const Parser = {
         }
         this.cursorX = 0;
         this.cursorY = 0;
-        this.printLine("*** DiskOS V1.5 ***");
+        this.printLine("*** DiskOS V1.8 ***");
         this.printLine("1024K VIRTUAL DISK MOUNTED");
         this.printLine("READY.");
     },
@@ -166,9 +165,6 @@ const Parser = {
         let cmd = rowString.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
         if (cmd === "") return;
 
-        // ==========================================
-        // 1. THE SANDWICH TOGGLE (RAW CAPTURE MODE)
-        // ==========================================
         if (cmd === "----") {
             this.isCapturingRaw = !this.isCapturingRaw;
             if (this.isCapturingRaw) {
@@ -182,9 +178,6 @@ const Parser = {
             return;
         }
 
-        // ==========================================
-        // 2. RAW CAPTURE ROUTING
-        // ==========================================
         if (this.isCapturingRaw) {
             this.rawBuffer.push(cmd);
             this.printLine(">");
@@ -196,9 +189,6 @@ const Parser = {
         let firstWord = parts[0];
         let fwUpper = firstWord.toUpperCase();
 
-        // ==========================================
-        // 3. THE $MENU GATEKEEPER
-        // ==========================================
         if (fwUpper.startsWith("$")) {
             this.cursorY++;
             this.checkScroll();
@@ -206,7 +196,6 @@ const Parser = {
             let menu = fwUpper.substring(1); 
             let action = parts[1] ? parts[1].toUpperCase() : null;
 
-            // NATIVE BUILT-IN MENUS
             if (menu === "FILE") {
                 if (action === "NEW") {
                     this.textBuffer = []; this.variables = {}; this.sprites = {}; this.rawBuffer = [];
@@ -216,9 +205,9 @@ const Parser = {
                     let payload = "";
                     if (this.rawBuffer.length > 0) {
                         payload = this.rawBuffer.join('\n');
-                        this.rawBuffer = []; // Clear after saving
+                        this.rawBuffer = []; 
                     } else {
-                        payload = "TYPE: diskCODE\nCOMPATIBILITY: V1.0\n---\n";
+                        payload = "TYPE: diskCODE\nCOMPATIBILITY: V1.8\n---\n";
                         for (let i = 0; i < this.textBuffer.length; i++) payload += this.textBuffer[i].line + " " + this.textBuffer[i].code + "\n";
                     }
                     Kernel.virtualSave(filename, payload);
@@ -229,7 +218,7 @@ const Parser = {
                     if (this.rawBuffer.length > 0) {
                         payload = this.rawBuffer.join('\n');
                     } else {
-                        payload = "TYPE: diskCODE\nCOMPATIBILITY: V1.0\n---\n";
+                        payload = "TYPE: diskCODE\nCOMPATIBILITY: V1.8\n---\n";
                         for (let i = 0; i < this.textBuffer.length; i++) payload += this.textBuffer[i].line + " " + this.textBuffer[i].code + "\n";
                     }
                     Kernel.physicalExport(filename, payload);
@@ -268,7 +257,6 @@ const Parser = {
                     this.printLine("-----------------");
                 }
             }
-            // CUSTOM LOADED MENUS (.diskGUI)
             else if (this.customMenus[menu]) {
                 if (action && this.customMenus[menu].includes(action)) {
                     this.variables["SYS_GUI_EVENT"] = menu + "." + action;
@@ -294,9 +282,6 @@ const Parser = {
             return; 
         }
 
-        // ==========================================
-        // 4. PARSER LOGIC
-        // ==========================================
         if (!isNaN(firstWord)) {
             let lineNum = parseInt(firstWord);
             let codeString = cmd.substring(firstWord.length).trim();
@@ -346,9 +331,9 @@ const Parser = {
                 let payload = "";
                 if (this.rawBuffer.length > 0) {
                     payload = this.rawBuffer.join('\n');
-                    this.rawBuffer = []; // Clear post-save
+                    this.rawBuffer = [];
                 } else {
-                    payload = "TYPE: diskCODE\nCOMPATIBILITY: V1.0\n---\n";
+                    payload = "TYPE: diskCODE\nCOMPATIBILITY: V1.8\n---\n";
                     for (let i = 0; i < this.textBuffer.length; i++) payload += this.textBuffer[i].line + " " + this.textBuffer[i].code + "\n";
                 }
                 
@@ -372,7 +357,7 @@ const Parser = {
                 if (this.rawBuffer.length > 0) {
                     payload = this.rawBuffer.join('\n');
                 } else {
-                    payload = "TYPE: diskCODE\nCOMPATIBILITY: V1.0\n---\n";
+                    payload = "TYPE: diskCODE\nCOMPATIBILITY: V1.8\n---\n";
                     for (let i = 0; i < this.textBuffer.length; i++) payload += this.textBuffer[i].line + " " + this.textBuffer[i].code + "\n";
                 }
                 
@@ -494,20 +479,16 @@ const Parser = {
         }
     },
 
-   processFileContent: function(fileContent, filename) {
+    processFileContent: function(fileContent, filename) {
         this.printLine("LOADING " + filename + "...");
         let lines = fileContent.split('\n');
         
-        // 1. Detect File Type
         let fileType = "diskCODE"; 
         for (let i = 0; i < Math.min(5, lines.length); i++) {
             if (lines[i].toUpperCase().startsWith("TYPE: DISKGUI")) fileType = "diskGUI";
             if (lines[i].toUpperCase().startsWith("TYPE: DISKPAD")) fileType = "diskPAD";
         }
 
-        // ==========================================
-        // 2. PARSE .diskPAD (THE GAMEPAD)
-        // ==========================================
         if (fileType === "diskPAD") {
             const padContainer = document.getElementById('gamepad');
             const padLeft = document.getElementById('pad-left');
@@ -545,9 +526,6 @@ const Parser = {
             return; 
         }
 
-        // ==========================================
-        // 3. PARSE .diskGUI (THE MENUS)
-        // ==========================================
         if (fileType === "diskGUI") {
             this.customMenus = {};
             let currentMenu = null;
@@ -567,9 +545,6 @@ const Parser = {
             return; 
         }
 
-        // ==========================================
-        // 4. PARSE .diskCODE (STANDARD CODE)
-        // ==========================================
         let isPayload = false;
         this.textBuffer = []; 
         let linesAdded = 0;
