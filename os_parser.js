@@ -5,12 +5,12 @@ const Parser = {
     cols: 64, rows: 32,                 // The physical 64x32 cell grid
     cursorX: 0, cursorY: 0,             // Where the blinking cursor currently sits
     vram: [],                           // Video RAM array holding the 2048 screen cells
-    textBuffer: [],                     // The active program code memory (Lines of code)
-    isRunning: false,                   // True if a program is executing
+    textBuffer: [],                     // Code memory (Standard line-numbered scripts)
+    isRunning: false,                   // True if a diskCODE program is executing
     currentLineIndex: 0,                // Which line of code the OS is currently running
     variables: {},                      // Storage for user variables (VAR command)
     sprites: {},                        // Storage for custom 1-bit sprites
-    customMenus: {},                    // Storage for $MENU GUI definitions
+    customMenus: {},                    // Storage for compiled $MENU GUI definitions
     
     // I/O States
     waitingForKey: false, targetVar: "", // Used by GET_KEY to pause execution
@@ -21,7 +21,7 @@ const Parser = {
 
     // RAW Mode States
     isCapturingRaw: false,              // True if ---- was typed
-    rawBuffer: [],                      // Storage for raw text (bypasses line numbers)
+    rawBuffer: [],                      // Storage for raw text (.diskGUI / .diskPAD)
 
     // ==========================================
     // 2. HELP DOCUMENTATION
@@ -77,7 +77,7 @@ const Parser = {
         }
         this.cursorX = 0;
         this.cursorY = 0;
-        this.setPadMode(false); // Unlock zoom on boot
+        this.setPadMode(false); 
         this.printLine("*** DiskOS V1.8 ***");
         this.printLine("1024K VIRTUAL DISK MOUNTED");
         this.printLine("READY.");
@@ -94,14 +94,12 @@ const Parser = {
         this.touchY = y;
     },
 
-    // Converts 2D (X,Y) coordinates into a 1D array index for VRAM
     getIndex: function(x, y) { return y * this.cols + x; },
 
     // ==========================================
     // 4. DISPLAY ENGINE
     // ==========================================
     
-    // Prints text to the screen, wrapping if it hits the right edge
     printLine: function(text) {
         for (let i = 0; i < text.length; i++) {
             if (this.cursorX >= this.cols) {
@@ -116,7 +114,6 @@ const Parser = {
         this.checkScroll();
     },
 
-    // If the cursor goes past the bottom row, shift all pixels up by one row
     checkScroll: function() {
         if (this.cursorY >= this.rows) {
             for (let y = 1; y < this.rows; y++) {
@@ -127,7 +124,6 @@ const Parser = {
                     this.vram[above].bg = this.vram[current].bg; 
                 }
             }
-            // Clear the very bottom line for new text
             for (let x = 0; x < this.cols; x++) {
                 let bottomIdx = this.getIndex(x, this.rows - 1);
                 this.vram[bottomIdx].char = ' ';
@@ -142,7 +138,6 @@ const Parser = {
     // ==========================================
     
     handleKey: function(key) {
-        // Escape acts as a hard break, stopping running code or raw modes
         if (key === "Escape") {
             if (this.isRunning) {
                 this.isRunning = false;
@@ -159,7 +154,6 @@ const Parser = {
             return;
         }
         
-        // If a program ran GET_KEY, grab the key, save it to the variable, and resume
         if (this.waitingForKey) {
             this.variables[this.targetVar] = key.toUpperCase();
             this.waitingForKey = false;
@@ -167,11 +161,10 @@ const Parser = {
             return;
         }
         
-        // Ignore typing if the OS is currently running a game
         if (this.isRunning) return;
         
         if (key === "Enter") {
-            this.processCurrentLine(); // Send the typed line to the compiler
+            this.processCurrentLine(); 
             this.cursorX = 0;
             this.cursorY++;
             this.checkScroll();
@@ -187,7 +180,6 @@ const Parser = {
             return;
         }
         
-        // Buffer standard letters to the VRAM
         if (key.length === 1) {
             this.vram[this.getIndex(this.cursorX, this.cursorY)].char = key.toUpperCase();
             this.cursorX++;
@@ -199,7 +191,6 @@ const Parser = {
         }
     },
 
-    // Synthesizes 8-bit style audio beeps
     playTone: function(freq, durationMs) {
         if (!this.audioCtx) return;
         let osc = this.audioCtx.createOscillator();
@@ -218,7 +209,6 @@ const Parser = {
     // 6. TERMINAL COMMAND ROUTER
     // ==========================================
     
-    // Reads whatever text is on the cursor's current line and attempts to execute it
     processCurrentLine: function() {
         let rowString = "";
         for (let x = 0; x < this.cols; x++) rowString += this.vram[this.getIndex(x, this.cursorY)].char;
@@ -239,7 +229,6 @@ const Parser = {
             return;
         }
 
-        // If in RAW mode, skip execution and just save it to the rawBuffer
         if (this.isCapturingRaw) {
             this.rawBuffer.push(cmd);
             this.printLine(">");
@@ -263,7 +252,7 @@ const Parser = {
 
             if (menu === "FILE") {
                 if (action === "NEW") {
-                    this.textBuffer = []; this.variables = {}; this.sprites = {}; this.rawBuffer = [];
+                    this.textBuffer = []; this.variables = {}; this.sprites = {}; this.rawBuffer = []; this.customMenus = {};
                     this.setPadMode(false);
                     this.printLine("MEMORY CLEARED.");
                 } else if (action === "SAVE") {
@@ -323,7 +312,6 @@ const Parser = {
                     this.printLine("-----------------");
                 }
             }
-            // Trigger loaded Custom GUI Menus (like games or apps)
             else if (this.customMenus[menu]) {
                 if (action && this.customMenus[menu].includes(action)) {
                     this.variables["SYS_GUI_EVENT"] = menu + "." + action;
@@ -352,20 +340,18 @@ const Parser = {
         // --------------------------------------
         // PROGRAMMING MODE (LINE NUMBERS)
         // --------------------------------------
-        // If it starts with a number (e.g. 10 PRINT "HELLO"), save it to memory
         if (!isNaN(firstWord)) {
             let lineNum = parseInt(firstWord);
             let codeString = cmd.substring(firstWord.length).trim();
             let existingIndex = this.textBuffer.findIndex(item => item.line === lineNum);
             
-            // If the code string is empty, delete the line
             if (codeString === "") {
                 if (existingIndex !== -1) this.textBuffer.splice(existingIndex, 1);
             } else {
                 if (existingIndex !== -1) this.textBuffer[existingIndex].code = codeString; 
                 else this.textBuffer.push({ line: lineNum, code: codeString }); 
             }
-            this.textBuffer.sort((a, b) => a.line - b.line); // Keep sorted sequentially
+            this.textBuffer.sort((a, b) => a.line - b.line); 
             
         } else {
             // --------------------------------------
@@ -390,13 +376,19 @@ const Parser = {
                 this.cursorY--;
             }
             else if (fwUpper === "LIST") {
-                if (this.textBuffer.length === 0) this.printLine("MEMORY IS EMPTY.");
-                else for (let i = 0; i < this.textBuffer.length; i++) this.printLine(this.textBuffer[i].line + " " + this.textBuffer[i].code);
+                // Now intelligently lists whatever is actively in memory (CODE or GUI/PAD)
+                if (this.textBuffer.length > 0) {
+                    for (let i = 0; i < this.textBuffer.length; i++) this.printLine(this.textBuffer[i].line + " " + this.textBuffer[i].code);
+                } else if (this.rawBuffer.length > 0) {
+                    for (let i = 0; i < this.rawBuffer.length; i++) this.printLine(this.rawBuffer[i]);
+                } else {
+                    this.printLine("MEMORY IS EMPTY.");
+                }
                 this.printLine("READY.");
                 this.cursorY--;
             } 
             else if (fwUpper === "NEW") {
-                this.textBuffer = []; this.variables = {}; this.sprites = {}; this.rawBuffer = [];
+                this.textBuffer = []; this.variables = {}; this.sprites = {}; this.rawBuffer = []; this.customMenus = {};
                 this.setPadMode(false);
                 this.printLine("MEMORY CLEARED.");
                 this.printLine("READY.");
@@ -528,11 +520,10 @@ const Parser = {
     // 7. PROGRAM EXECUTION PREP
     // ==========================================
     
-    // Sets up the environment variables and flags to start executing memory
     runCode: function() {
+        // SCENARIO A: Standard executable code loaded in textBuffer
         if (this.textBuffer.length > 0) {
             try {
-                // Initialize audio engine upon user interaction
                 if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 if (this.audioCtx && this.audioCtx.state === 'suspended') this.audioCtx.resume();
             } catch (e) { console.warn("Audio disabled."); }
@@ -540,7 +531,6 @@ const Parser = {
             this.isRunning = true;
             this.currentLineIndex = 0;
             
-            // Preserve system variables that survive a memory wipe
             let preservedCount = this.variables["SYS_FILE_COUNT"];
             let preservedFiles = this.variables["SYS_FILES"];
             let preservedEvent = this.variables["SYS_GUI_EVENT"]; 
@@ -559,7 +549,70 @@ const Parser = {
             this.waitingForTimer = false;
             this.keysDown = {}; 
             this.touchActive = 0;
-        } else {
+        } 
+        // SCENARIO B: A Raw File (.diskGUI or .diskPAD) is waiting to be compiled!
+        else if (this.rawBuffer.length > 0) {
+            let fileType = "RAW";
+            for (let i = 0; i < Math.min(5, this.rawBuffer.length); i++) {
+                if (this.rawBuffer[i].toUpperCase().startsWith("TYPE: DISKGUI")) fileType = "diskGUI";
+                if (this.rawBuffer[i].toUpperCase().startsWith("TYPE: DISKPAD")) fileType = "diskPAD";
+            }
+
+            if (fileType === "diskGUI") {
+                this.customMenus = {};
+                let currentMenu = null;
+                let itemsAdded = 0;
+                for (let i = 0; i < this.rawBuffer.length; i++) {
+                    let line = this.rawBuffer[i].trim();
+                    let upperLine = line.toUpperCase();
+                    if (upperLine.startsWith("DEF_MENU ")) {
+                        currentMenu = line.substring(9).replace("$", "").trim().toUpperCase();
+                        this.customMenus[currentMenu] = [];
+                    } else if (upperLine.startsWith("DEF_ITEM ") && currentMenu) {
+                        this.customMenus[currentMenu].push(line.substring(9).trim().toUpperCase());
+                        itemsAdded++;
+                    }
+                }
+                this.printLine("GUI COMPILED: " + itemsAdded + " ITEMS.");
+                this.printLine("READY.");
+            } 
+            else if (fileType === "diskPAD") {
+                const padLeft = document.getElementById('pad-left');
+                const padRight = document.getElementById('pad-right');
+                if (padLeft && padRight) {
+                    padLeft.innerHTML = ''; padRight.innerHTML = '';
+                    let itemsAdded = 0;
+
+                    for (let i = 0; i < this.rawBuffer.length; i++) {
+                        let line = this.rawBuffer[i].trim();
+                        let upperLine = line.toUpperCase();
+                        
+                        if (upperLine.startsWith("DPAD: HORIZONTAL")) {
+                            padLeft.innerHTML += `<div class="btn btn-dpad" onmousedown="Parser.setKeyState('ArrowLeft', true)" onmouseup="Parser.setKeyState('ArrowLeft', false)" ontouchstart="Parser.setKeyState('ArrowLeft', true)" ontouchend="Parser.setKeyState('ArrowLeft', false)">◀</div>`;
+                            padLeft.innerHTML += `<div class="btn btn-dpad" onmousedown="Parser.setKeyState('ArrowRight', true)" onmouseup="Parser.setKeyState('ArrowRight', false)" ontouchstart="Parser.setKeyState('ArrowRight', true)" ontouchend="Parser.setKeyState('ArrowRight', false)">▶</div>`;
+                            itemsAdded++;
+                        } 
+                        else if (upperLine.startsWith("BTN: ")) {
+                            let parts = line.split(" ");
+                            let label = parts[1] || "A";
+                            let mappedKey = parts[2] || "SPACE";
+                            let sizeClass = (parts[3] && parts[3].toUpperCase() === "SMALL") ? "btn-small" : "btn-action";
+                            if (mappedKey.toUpperCase() === "SPACE") mappedKey = " ";
+                            
+                            padRight.innerHTML += `<div class="btn ${sizeClass}" onmousedown="Parser.setKeyState('${mappedKey}', true)" onmouseup="Parser.setKeyState('${mappedKey}', false)" ontouchstart="Parser.setKeyState('${mappedKey}', true)" ontouchend="Parser.setKeyState('${mappedKey}', false)">${label}</div>`;
+                            itemsAdded++;
+                        }
+                    }
+                    this.setPadMode(true);
+                    this.printLine("PAD COMPILED: " + itemsAdded + " ELEMENTS.");
+                }
+                this.printLine("READY.");
+            } else {
+                this.printLine("?CANNOT RUN RAW TEXT");
+                this.printLine("READY.");
+            }
+        } 
+        else {
             this.printLine("MEMORY IS EMPTY.");
             this.printLine("READY.");
         }
@@ -579,63 +632,27 @@ const Parser = {
             if (lines[i].toUpperCase().startsWith("TYPE: DISKPAD")) fileType = "diskPAD";
         }
 
-        // --- DISKPAD COMPILER ---
-        // Builds the on-screen mobile controller dynamically based on text file rules
-        if (fileType === "diskPAD") {
-            const padLeft = document.getElementById('pad-left');
-            const padRight = document.getElementById('pad-right');
-            padLeft.innerHTML = ''; padRight.innerHTML = '';
-            let itemsAdded = 0;
-
+        // GUI and PAD files are now placed securely into the rawBuffer.
+        // This lets the user LIST them, EDIT them, and use RUN to compile them!
+        if (fileType === "diskGUI" || fileType === "diskPAD") {
+            this.textBuffer = []; // Clear standard memory to avoid conflicts
+            this.rawBuffer = [];
+            let linesAdded = 0;
             for (let i = 0; i < lines.length; i++) {
                 let line = lines[i].replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-                
-                if (line.startsWith("DPAD: HORIZONTAL")) {
-                    padLeft.innerHTML += `<div class="btn btn-dpad" onmousedown="Parser.setKeyState('ArrowLeft', true)" onmouseup="Parser.setKeyState('ArrowLeft', false)" ontouchstart="Parser.setKeyState('ArrowLeft', true)" ontouchend="Parser.setKeyState('ArrowLeft', false)">◀</div>`;
-                    padLeft.innerHTML += `<div class="btn btn-dpad" onmousedown="Parser.setKeyState('ArrowRight', true)" onmouseup="Parser.setKeyState('ArrowRight', false)" ontouchstart="Parser.setKeyState('ArrowRight', true)" ontouchend="Parser.setKeyState('ArrowRight', false)">▶</div>`;
-                    itemsAdded++;
-                } 
-                else if (line.startsWith("BTN: ")) {
-                    let parts = line.split(" ");
-                    let label = parts[1] || "A";
-                    let mappedKey = parts[2] || "SPACE";
-                    let sizeClass = (parts[3] && parts[3] === "SMALL") ? "btn-small" : "btn-action";
-                    if (mappedKey === "SPACE") mappedKey = " ";
-                    
-                    padRight.innerHTML += `<div class="btn ${sizeClass}" onmousedown="Parser.setKeyState('${mappedKey}', true)" onmouseup="Parser.setKeyState('${mappedKey}', false)" ontouchstart="Parser.setKeyState('${mappedKey}', true)" ontouchend="Parser.setKeyState('${mappedKey}', false)">${label}</div>`;
-                    itemsAdded++;
+                if (line !== "") {
+                    this.rawBuffer.push(line);
+                    linesAdded++;
                 }
             }
-            this.setPadMode(true);
-            this.printLine("REGISTERED " + itemsAdded + " PAD ELEMENTS.");
-            this.printLine("READY.");
-            return; 
-        }
-
-        // --- DISKGUI COMPILER ---
-        // Exposes native menus inside the terminal environment
-        if (fileType === "diskGUI") {
-            this.customMenus = {};
-            let currentMenu = null;
-            let itemsAdded = 0;
-            for (let i = 0; i < lines.length; i++) {
-                let line = lines[i].replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-                if (line.startsWith("DEF_MENU ")) {
-                    currentMenu = line.substring(9).replace("$", "").trim().toUpperCase();
-                    this.customMenus[currentMenu] = [];
-                } else if (line.startsWith("DEF_ITEM ") && currentMenu) {
-                    this.customMenus[currentMenu].push(line.substring(9).trim().toUpperCase());
-                    itemsAdded++;
-                }
-            }
-            this.printLine("REGISTERED " + itemsAdded + " GUI ITEMS.");
+            this.printLine("LOADED " + linesAdded + " RAW LINES.");
             this.printLine("READY.");
             return; 
         }
 
         // --- DISKCODE COMPILER ---
-        // Standard executable payload
         let isPayload = false;
+        this.rawBuffer = []; // Clear raw memory to avoid conflicts
         this.textBuffer = []; 
         let linesAdded = 0;
         
@@ -660,10 +677,9 @@ const Parser = {
     // 9. DATA INGESTION
     // ==========================================
     
-    // Ingests blocks of code from the clipboard interceptor in index.html
     pasteFromClipboard: function(text) {
         this.printLine("PASTING...");
-        text = text.replace(/[\u200B-\u200D\uFEFF]/g, ''); // Strip invisible formatting chars
+        text = text.replace(/[\u200B-\u200D\uFEFF]/g, ''); 
         let lines = text.split('\n');
         let linesAdded = 0;
 
@@ -673,7 +689,6 @@ const Parser = {
                 if (line === "") continue;
                 this.rawBuffer.push(line);
                 
-                // Echo the paste to the screen so the user knows it worked!
                 let preview = "> " + line.substring(0, this.cols - 3);
                 this.printLine(preview); 
                 
@@ -716,11 +731,9 @@ const Parser = {
         return colors[c.toUpperCase()] || c; 
     },
 
-    // Parses string expressions (e.g. "X + 5", "RND(10)") into actual JS values
     evaluateExpression: function(expr) {
         let safeExpr = expr;
         
-        // Inject user variables
         for (const [key, value] of Object.entries(this.variables)) {
             let regex = new RegExp('\\b' + key + '\\b', 'g');
             let safeValue;
@@ -730,13 +743,11 @@ const Parser = {
             safeExpr = safeExpr.replace(regex, safeValue);
         }
 
-        // Inject System variables and functions
         safeExpr = safeExpr.replace(/\bRND\((.*?)\)/g, "Math.floor(Math.random() * ($1))");
         safeExpr = safeExpr.replace(/\bTOUCH_ACTIVE\b/g, this.touchActive);
         safeExpr = safeExpr.replace(/\bTOUCH_X\b/g, this.touchX);
         safeExpr = safeExpr.replace(/\bTOUCH_Y\b/g, this.touchY);
 
-        // Hardware key mapping (translates diskCODE keywords into raw JS keys)
         safeExpr = safeExpr.replace(/\bBTN_([A-Z0-9_]+)\b/g, (match, p1) => {
             let keyName = p1;
             if (keyName === "SPACE") keyName = " ";
@@ -750,7 +761,6 @@ const Parser = {
         safeExpr = safeExpr.replace(/\bAND\b/g, "&&");
         safeExpr = safeExpr.replace(/\bOR\b/g, "||");
 
-        // Evaluates the math
         try { return new Function('return ' + safeExpr)(); } 
         catch (e) { return expr; }
     },
@@ -759,8 +769,6 @@ const Parser = {
     // 11. THE RUNTIME ENGINE (The Core)
     // ==========================================
     
-    // Runs exactly one line of code from the memory buffer.
-    // Called 20x per frame by index.html to simulate processor speed.
     executeStep: function() {
         if (!this.isRunning || this.waitingForKey || this.waitingForTimer) return;
 
@@ -1025,5 +1033,4 @@ const Parser = {
     }
 };
 
-// Power up the parser on load!
 Parser.init();
