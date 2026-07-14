@@ -234,6 +234,16 @@
         });
 
         // ==========================================
+        // NATIVE PASTE INTERCEPTOR
+        // ==========================================
+        mobileInput.addEventListener('paste', (e) => {
+            e.preventDefault();
+            let pasteText = (e.clipboardData || window.clipboardData).getData('text');
+            Parser.pasteFromClipboard(pasteText);
+        });
+
+
+        // ==========================================
         // DRAG AND DROP INSTALLATION
         // ==========================================
         window.addEventListener('dragover', (e) => {
