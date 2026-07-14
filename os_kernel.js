@@ -33,9 +33,6 @@ hiddenInput.addEventListener('blur', () => {
     document.body.style.height = "100dvh"; 
 });
 
-// ==========================================
-// PHYSICAL KEYBOARD POLLING
-// ==========================================
 window.addEventListener('keydown', (e) => {
     if (Parser.setKeyState) Parser.setKeyState(e.key, true);
 });
@@ -43,23 +40,16 @@ window.addEventListener('keyup', (e) => {
     if (Parser.setKeyState) Parser.setKeyState(e.key, false);
 });
 
-// ==========================================
-// TOUCH & MOUSE TO GRID COORDINATES
-// ==========================================
 function getCanvasCoords(e) {
     const rect = canvas.getBoundingClientRect();
     let clientX = e.touches ? e.touches[0].clientX : e.clientX;
     let clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    
     let x = Math.floor(((clientX - rect.left) * scaleX) / CELL_WIDTH);
     let y = Math.floor(((clientY - rect.top) * scaleY) / CELL_HEIGHT);
-    
     if (x < 0) x = 0; if (x >= COLS) x = COLS - 1;
     if (y < 0) y = 0; if (y >= ROWS) y = ROWS - 1;
-    
     return {x, y};
 }
 
@@ -85,9 +75,6 @@ window.addEventListener('mouseup', () => {
     }
 });
 
-// ==========================================
-// LONG PRESS MENU & TOUCH SCREEN POLLING
-// ==========================================
 let touchTimer;
 let isMenuOpen = false;
 let isLongPress = false;
@@ -105,13 +92,11 @@ canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
         return; 
     }
-    
     if (Parser.isRunning) {
         e.preventDefault(); 
         let coords = getCanvasCoords(e);
         if (Parser.setTouchState) Parser.setTouchState(1, coords.x, coords.y);
-    } 
-    else {
+    } else {
         if (e.touches.length === 1 && !isMenuOpen) {
             isLongPress = false;
             touchTimer = setTimeout(() => {
@@ -195,12 +180,38 @@ hiddenInput.addEventListener('input', (e) => {
 });
 
 // ==========================================
-// KERNEL PERSISTENCE (DISK STORAGE)
+// NEW KERNEL PERSISTENCE (VIRTUAL DRIVE)
 // ==========================================
 const fileLoader = document.getElementById('disk-loader');
 const Kernel = {
-    saveToDevice: function(filename, content) {
-        localStorage.setItem(filename, content); 
+    activeDir: null,
+    
+    // Save to Virtual Drive (Silent)
+    virtualSave: function(filename, content) {
+        localStorage.setItem(filename, content);
+        
+        // If a directory is mounted, automatically log this file inside it
+        if (this.activeDir && filename !== this.activeDir) {
+            let dirContent = localStorage.getItem(this.activeDir) || "TYPE: diskDIR\n---\n";
+            let lines = dirContent.split('\n');
+            let fileExists = false;
+            for(let i = 0; i < lines.length; i++) {
+                if (lines[i].trim() === filename) fileExists = true;
+            }
+            if (!fileExists) {
+                dirContent += filename + "\n";
+                localStorage.setItem(this.activeDir, dirContent);
+            }
+        }
+    },
+    
+    // Load from Virtual Drive (Silent)
+    virtualLoad: function(filename) {
+        return localStorage.getItem(filename);
+    },
+
+    // Export to Real Device (Physical Download)
+    physicalExport: function(filename, content) {
         const blob = new Blob([content], { type: 'application/octet-stream' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -208,11 +219,31 @@ const Kernel = {
         document.body.appendChild(a); a.click();
         document.body.removeChild(a); URL.revokeObjectURL(url);
     },
-    loadFromDisk: function(filename) {
-        return localStorage.getItem(filename);
-    },
-    triggerLoad: function() {
+
+    // Import from Real Device (Popup)
+    triggerImport: function() {
         fileLoader.click();
+    },
+
+    // Mount Directory
+    mountDir: function(dirname) {
+        this.activeDir = dirname;
+        let content = localStorage.getItem(dirname);
+        // Create blank directory if it doesn't exist
+        if (!content) {
+            content = "TYPE: diskDIR\n---\n";
+            localStorage.setItem(dirname, content);
+        }
+        
+        let files = [];
+        let lines = content.split('\n');
+        let isPayload = false;
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+            if (line === "---") { isPayload = true; continue; }
+            if (isPayload && line !== "") files.push(line);
+        }
+        return files;
     }
 };
 
@@ -221,15 +252,14 @@ fileLoader.addEventListener('change', (e) => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = function(event) {
-        Parser.loadFromDisk(event.target.result, file.name);
+        // Save the imported file to the Virtual Drive, then load it
+        Kernel.virtualSave(file.name, event.target.result);
+        Parser.processFileContent(event.target.result, file.name);
     };
     reader.readAsText(file);
     fileLoader.value = "";
 });
 
-// ==========================================
-// MASTER LOOP (CPU OVERCLOCK)
-// ==========================================
 function kernelLoop(timestamp) {
     requestAnimationFrame(kernelLoop);
     let deltaTime = timestamp - lastTime;
@@ -240,7 +270,6 @@ function kernelLoop(timestamp) {
         
         if (Parser.isRunning) {
             let cycles = 0;
-            // Execute up to 1000 lines of code instantly before rendering the frame
             while (Parser.isRunning && !Parser.waitingForKey && !Parser.waitingForTimer && cycles < 1000) {
                 Parser.executeStep();
                 cycles++;
@@ -261,12 +290,10 @@ function renderVRAM() {
     for (let y = 0; y < ROWS; y++) {
         for (let x = 0; x < COLS; x++) {
             let cell = Parser.vram[Parser.getIndex(x, y)];
-            
             if (cell.bg !== '#000000') {
                 ctx.fillStyle = cell.bg;
                 ctx.fillRect(x * CELL_WIDTH, y * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);
             }
-
             if (cell.char !== ' ') {
                 ctx.fillStyle = cell.fg;
                 ctx.fillText(cell.char, x * CELL_WIDTH + 2, y * CELL_HEIGHT + 2);
