@@ -30,7 +30,7 @@ window.addEventListener('keydown', (e) => {
         if(document.body.classList.contains('pad-active')) e.preventDefault();
     }
     
-    // THE FIX: Let the invisible textarea handle all standard typing!
+    // Let the invisible textarea handle all standard typing!
     // We only step in here for Escape (to break code) and hardware states for games
     if (e.key === "Escape") Parser.handleKey(e.key);
     
@@ -156,10 +156,9 @@ function render() {
         }
     }
     
-    // 2. CLEAR CANVAS: Paint the entire screen black for a fresh frame
-    ctx.fillStyle = Parser.systemColor; 
-ctx.fillRect(Parser.cursorX * CELL_WIDTH, Parser.cursorY * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);
-
+    // 2. CLEAR CANVAS: Paint the entire screen using the dynamic system background color
+    ctx.fillStyle = Parser.systemBgColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     // 3. SET FONT: Use crisp Retina scaling
     ctx.font = "bold 16px monospace";
@@ -171,8 +170,8 @@ ctx.fillRect(Parser.cursorX * CELL_WIDTH, Parser.cursorY * CELL_HEIGHT, CELL_WID
             let idx = Parser.getIndex(x, y);
             let cell = Parser.vram[idx];
             
-            // Draw Background color block
-            if (cell.bg !== '#000000') {
+            // Draw Background color block (if different from global background)
+            if (cell.bg !== Parser.systemBgColor) {
                 ctx.fillStyle = cell.bg;
                 ctx.fillRect(x * CELL_WIDTH, y * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);
             }
@@ -189,14 +188,14 @@ ctx.fillRect(Parser.cursorX * CELL_WIDTH, Parser.cursorY * CELL_HEIGHT, CELL_WID
     if (blinkTimer > 30) { cursorVisible = !cursorVisible; blinkTimer = 0; }
     
     if (!Parser.isRunning && cursorVisible) {
-        // Draw amber block
-        ctx.fillStyle = "#FFB000"; 
+        // Draw the cursor using the active system theme color
+        ctx.fillStyle = Parser.systemColor; 
         ctx.fillRect(Parser.cursorX * CELL_WIDTH, Parser.cursorY * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);
         
-        // If the cursor is resting on top of text, redraw that text in black so it stays visible
+        // If the cursor is resting on top of text, redraw that text in the background color so it stays visible
         let idx = Parser.getIndex(Parser.cursorX, Parser.cursorY);
         if (Parser.vram[idx] && Parser.vram[idx].char !== ' ') {
-            ctx.fillStyle = "#000000";
+            ctx.fillStyle = Parser.systemBgColor;
             ctx.fillText(Parser.vram[idx].char, Parser.cursorX * CELL_WIDTH, Parser.cursorY * CELL_HEIGHT);
         }
     }
