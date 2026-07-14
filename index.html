@@ -31,7 +31,7 @@
             transition: transform 0.2s ease;
         }
 
-        /* The physical width stays 100%, but it renders the 1280px internal resolution sharply */
+        /* Retina scaling */
         canvas { 
             display: block; width: 100%; height: auto; 
             image-rendering: pixelated; 
@@ -114,12 +114,17 @@
         const ctx = canvas.getContext('2d');
         const mobileInput = document.getElementById('mobile-keyboard');
         
-        // 20x20 Cells perfectly divide into the 1280x640 canvas (64 cols x 32 rows)
         const CELL_WIDTH = 20; 
         const CELL_HEIGHT = 20;
         
         let blinkTimer = 0; 
         let cursorVisible = true;
+
+        // Long-Press Tracking Variables
+        let touchStartTime = 0;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let isSwipe = false;
 
         // ==========================================
         // MOBILE KEYBOARD TOGGLE
@@ -156,6 +161,7 @@
             Parser.setTouchState(isActive ? 1 : 0, gridX, gridY);
         }
 
+        // DESKTOP CLICKS
         canvas.addEventListener('mousedown', (e) => {
             e.preventDefault();
             mobileInput.focus();
@@ -164,7 +170,13 @@
         window.addEventListener('mouseup', (e) => Parser.setTouchState(0, Parser.touchX, Parser.touchY));
         canvas.addEventListener('mousemove', (e) => { if (Parser.touchActive) handlePointer(e, true); });
 
+        // MOBILE TOUCH (WITH LONG-PRESS LOGIC)
         canvas.addEventListener('touchstart', (e) => { 
+            touchStartTime = Date.now();
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            isSwipe = false;
+
             if (document.body.classList.contains('pad-active')) {
                 e.preventDefault(); 
             }
@@ -173,6 +185,11 @@
         }, {passive: false});
         
         canvas.addEventListener('touchmove', (e) => { 
+            // If the finger moves more than 10 pixels, cancel the long-press paste
+            let dx = Math.abs(e.touches[0].clientX - touchStartX);
+            let dy = Math.abs(e.touches[0].clientY - touchStartY);
+            if (dx > 10 || dy > 10) isSwipe = true;
+
             if (document.body.classList.contains('pad-active')) {
                 e.preventDefault(); 
             }
@@ -180,8 +197,21 @@
         }, {passive: false});
 
         canvas.addEventListener('touchend', (e) => {
-            e.preventDefault(); 
-            mobileInput.focus(); 
+            e.preventDefault(); // Ghost click killer
+            
+            let touchDuration = Date.now() - touchStartTime;
+            
+            // Custom Long-Press Detection (600ms) for Pasting
+            if (!document.body.classList.contains('pad-active') && !isSwipe && touchDuration > 600) {
+                navigator.clipboard.readText().then(text => {
+                    Parser.pasteFromClipboard(text);
+                }).catch(err => {
+                    Parser.printLine("?CLIPBOARD ACCESS DENIED");
+                    Parser.printLine("READY.");
+                });
+            } else {
+                mobileInput.focus(); 
+            }
         }, {passive: false});
 
         window.addEventListener('touchend', (e) => { 
@@ -235,7 +265,6 @@
             ctx.fillStyle = "#000000";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // The crisp, bold 16px font scaled for Retina
             ctx.font = "bold 16px monospace";
             ctx.textBaseline = "top";
 
