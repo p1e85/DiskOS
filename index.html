@@ -33,6 +33,17 @@
             overflow: hidden;
         }
 
+        <div id="monitor">
+    <canvas id="screen" width="640" height="320"></canvas>
+    <div class="scanlines"></div>
+    <div class="glass-glare"></div>
+</div>
+
+<div id="gamepad">
+    <div id="pad-left" class="pad-section"></div>
+    <div id="pad-right" class="pad-section"></div>
+</div>
+
         /* 64 columns x 32 rows. We scale it up by 10x for visibility */
         canvas {
             display: block;
