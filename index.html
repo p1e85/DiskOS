@@ -3,26 +3,112 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DiskOS V1.8</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>P1 Creations | DiskOS</title>
+    <style>
+        :root {
+            --primary: #FFB000; /* DiskOS Amber */
+            --bg: #050505;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--primary);
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+            user-select: none;
+            overflow: hidden;
+        }
+        .container {
+            border: 2px solid #1a1a1a;
+            padding: 50px;
+            background: #000;
+            box-shadow: 0 0 30px rgba(255, 176, 0, 0.05);
+            z-index: 10;
+        }
+        h1 {
+            margin-top: 0;
+            font-size: 3rem;
+            letter-spacing: 3px;
+            text-shadow: 0 0 10px rgba(255, 176, 0, 0.5);
+            margin-bottom: 5px;
+        }
+        .subtitle {
+            font-size: 1.2rem;
+            margin-bottom: 50px;
+            opacity: 0.7;
+            letter-spacing: 1px;
+        }
+        .btn-launch {
+            display: inline-block;
+            background-color: var(--primary);
+            color: #000;
+            text-decoration: none;
+            font-size: 1.5rem;
+            font-weight: bold;
+            padding: 15px 40px;
+            border: 2px solid var(--primary);
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            text-transform: uppercase;
+        }
+        .btn-launch:hover {
+            background-color: transparent;
+            color: var(--primary);
+            box-shadow: 0 0 20px rgba(255, 176, 0, 0.6);
+        }
+        .footer {
+            position: absolute;
+            bottom: 30px;
+            font-size: 0.9rem;
+            z-index: 10;
+        }
+        .footer a {
+            color: #555;
+            text-decoration: none;
+            transition: color 0.2s;
+            border-bottom: 1px dashed #555;
+            letter-spacing: 1px;
+        }
+        .footer a:hover {
+            color: var(--primary);
+            border-bottom: 1px dashed var(--primary);
+        }
+        
+        /* Subtle CRT scanline effect */
+        body::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+            z-index: 2;
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+    </style>
 </head>
 <body>
 
-    <div id="monitor">
-        <textarea id="mobile-keyboard" autocorrect="off" autocapitalize="none" spellcheck="false" autocomplete="off"></textarea>
-        <canvas id="screen" width="1280" height="640"></canvas>
-        <div class="scanlines"></div>
-        <div class="glass-glare"></div>
+    <div class="container">
+        <h1>DiskOS V1.8</h1>
+        <div class="subtitle">A P1 CREATIONS SYSTEM</div>
+        
+        <!-- Change this href to point to your stable, production OS file -->
+        <a href="diskos-beta.html" class="btn-launch">Launch DiskOS</a>
     </div>
 
-    <div id="gamepad">
-        <div id="pad-left" class="pad-section"></div>
-        <div id="pad-right" class="pad-section"></div>
+    <div class="footer">
+        <!-- Change this href to point to your experimental/testing OS file -->
+        <a href="diskos-test.html">Access Test Environment</a>
     </div>
-
-    <script src="os_kernel.js"></script>
-    <script src="os_parser.js"></script>
-    <script src="os_ui.js"></script>
 
 </body>
 </html>
