@@ -20,10 +20,19 @@
         <div id="pad-right" class="pad-section"></div>
     </div>
 
-    <script src="testmodules/os_kernel.js"></script>
+<!-- Order matters! Load Memory, Display, Audio, CPU first -->
+<script type="module" src="os_memory.js"></script>
+<script type="module" src="os_audio.js"></script>
+<script type="module" src="os_display.js"></script>
+<script type="module" src="os_cpu.js"></script>
+<script type="module" src="os_terminal.js"></script>
 
-    <script type="module" src="os_ui.js"></script>
-    <script type="module" src="os_parser.js"></script>
+<!-- The Parser Motherboard links them all -->
+<script type="module" src="os_parser.js"></script>
+
+<!-- The Kernel and UI depend on the Parser -->
+<script type="module" src="os_kernel.js"></script>
+<script type="module" src="os_ui.js"></script>
 
 </body>
 </html>
