@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DiskOS Sprite Studio</title>
+    <style>
+        body { background: #222; color: #0f0; font-family: monospace; text-align: center; padding: 20px; }
+        h1 { margin-bottom: 5px; }
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(8, 40px); 
+            gap: 2px; 
+            justify-content: center; 
+            margin: 20px auto; 
+        }
+        .pixel { 
+            width: 40px; height: 40px; 
+            background: #000; 
+            border: 1px solid #333; 
+            cursor: pointer; 
+        }
+        .pixel.active { background: #0f0; border-color: #0f0; }
+        textarea { 
+            width: 80%; height: 60px; 
+            background: #000; color: #0f0; 
+            border: 1px solid #0f0; 
+            padding: 10px; font-family: monospace; font-size: 16px;
+        }
+        button { 
+            background: #0f0; color: #000; 
+            border: none; padding: 10px 20px; 
+            font-size: 16px; font-weight: bold; cursor: pointer; margin: 10px;
+        }
+        button:hover { background: #fff; }
+    </style>
+</head>
+<body>
+
+    <h1>DISKOS SPRITE STUDIO</h1>
+    <p>Click pixels to draw. Export to generate .diskCODE array.</p>
+
+    <div class="grid" id="spriteGrid"></div>
+
+    <button onclick="clearGrid()">CLEAR</button>
+    <button onclick="exportSprite()">GENERATE CODE</button>
+    
+    <br><br>
+    <textarea id="output" readonly>Click GENERATE to get your array data...</textarea>
+
+    <script>
+        const grid = document.getElementById('spriteGrid');
+        let pixels = [];
+
+        // Build the 8x8 Grid
+        for (let i = 0; i < 64; i++) {
+            let p = document.createElement('div');
+            p.className = 'pixel';
+            p.addEventListener('mousedown', () => togglePixel(p));
+            p.addEventListener('mouseenter', (e) => { if(e.buttons === 1) togglePixel(p) }); // Drag to draw
+            grid.appendChild(p);
+            pixels.push(p);
+        }
+
+        function togglePixel(el) {
+            el.classList.toggle('active');
+        }
+
+        function clearGrid() {
+            pixels.forEach(p => p.classList.remove('active'));
+            document.getElementById('output').value = "";
+        }
+
+        function exportSprite() {
+            // Convert grid to an array of 1s and 0s
+            const arrayData = pixels.map(p => p.classList.contains('active') ? 1 : 0);
+            
+            // Format for DiskOS syntax
+            const codeString = `DIM SPRITE1 64\nVAR SPRITE1 = [${arrayData.join(',')}]`;
+            document.getElementById('output').value = codeString;
+        }
+    </script>
+</body>
+</html>

@@ -5,11 +5,26 @@ import { APU } from './os_audio.js';
 export const CPU = {
     evaluateExpression(expr) {
         let safeExpr = expr;
+
+        // 1. Process COLLIDE() first so it turns into "1" or "0" before math evaluation
+        safeExpr = safeExpr.replace(/\bCOLLIDE\(([^)]+)\)/g, (match, argsString) => {
+            const args = argsString.split(',').map(arg => this.evaluateExpression(arg.trim()));
+            if (args.length === 8) {
+                const [x1, y1, w1, h1, x2, y2, w2, h2] = args;
+                const isHit = (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
+                return isHit ? "1" : "0";
+            }
+            return "0";
+        });
+
+        // 2. Inject Variables
         for (const [key, value] of Object.entries(RAM.variables)) {
             let regex = new RegExp(`\\b${key}\\b`, 'g');
             let safeValue = (typeof value === 'string') ? `"${value}"` : (Array.isArray(value) ? JSON.stringify(value) : value);
             safeExpr = safeExpr.replace(regex, safeValue);
         }
+
+        // 3. Engine Functions & I/O
         safeExpr = safeExpr.replace(/\bRND\((.*?)\)/g, "Math.floor(Math.random() * ($1))");
         safeExpr = safeExpr.replace(/\bTOUCH_ACTIVE\b/g, RAM.touchActive);
         safeExpr = safeExpr.replace(/\bTOUCH_X\b/g, RAM.touchX);
@@ -18,7 +33,11 @@ export const CPU = {
             const mapped = { "SPACE": " ", "UP": "ARROWUP", "DOWN": "ARROWDOWN", "LEFT": "ARROWLEFT", "RIGHT": "ARROWRIGHT" };
             return RAM.keysDown[mapped[p1] || p1] ? "1" : "0";
         });
+        
+        // 4. Logic Operators
         safeExpr = safeExpr.replace(/\bAND\b/g, "&&").replace(/\bOR\b/g, "||");
+        
+        // 5. Final Engine Execution
         try { return new Function('return ' + safeExpr)(); } 
         catch (e) { return expr; }
     },

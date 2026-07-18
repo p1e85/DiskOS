@@ -8,6 +8,19 @@ export const CLI = {
         return `TYPE: diskCODE\nCOMPATIBILITY: V1.8\n---\n` + RAM.textBuffer.map(t => `${t.line} ${t.code}`).join('\n');
     },
 
+    // NEW: Function to snap cursor on mobile/mouse tap
+    setCursor(x, y) {
+        if (!RAM.isRunning && !RAM.waitingForInput && !RAM.waitingForKey) {
+            RAM.cursorX = Math.floor(x);
+            RAM.cursorY = Math.floor(y);
+            // Ensure bounds
+            if (RAM.cursorX < 0) RAM.cursorX = 0;
+            if (RAM.cursorX >= RAM.cols) RAM.cursorX = RAM.cols - 1;
+            if (RAM.cursorY < 0) RAM.cursorY = 0;
+            if (RAM.cursorY >= RAM.rows) RAM.cursorY = RAM.rows - 1;
+        }
+    },
+
     handleKey(key) {
         if (key === "Escape") {
             if (RAM.isRunning) {
@@ -48,6 +61,12 @@ export const CLI = {
         }
         
         if (RAM.isRunning) return;
+        
+        // --- C64 ARROW KEY NAVIGATION ---
+        if (key === "ArrowUp") { if (RAM.cursorY > 0) RAM.cursorY--; return; }
+        if (key === "ArrowDown") { if (RAM.cursorY < RAM.rows - 1) RAM.cursorY++; return; }
+        if (key === "ArrowLeft") { if (RAM.cursorX > 0) RAM.cursorX--; return; }
+        if (key === "ArrowRight") { if (RAM.cursorX < RAM.cols - 1) RAM.cursorX++; return; }
         
         if (key === "Enter") {
             this.processCurrentLine(); 
@@ -149,7 +168,6 @@ export const CLI = {
             } 
             else if (fwUpper === "HELP") {
                 GPU.printLine("");
-                // Simplified help dump for brevity
                 GPU.printLine("SEE MANUAL FOR COMMANDS."); GPU.printLine(""); RAM.cursorY--;
             }
             else if (fwUpper === "LIST") {

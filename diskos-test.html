@@ -9,7 +9,9 @@
 <body>
 
     <div id="monitor">
-        <textarea id="mobile-keyboard" autocorrect="off" autocapitalize="none" spellcheck="false" autocomplete="off"></textarea>
+        <!-- Added inline CSS to make the input hidden but still focusable for mobile -->
+        <textarea id="mobile-keyboard" style="position: absolute; opacity: 0; z-index: -1; pointer-events: none;" autocorrect="off" autocapitalize="none" spellcheck="false" autocomplete="off"></textarea>
+        
         <canvas id="screen" width="1280" height="640"></canvas>
         <div class="scanlines"></div>
         <div class="glass-glare"></div>
@@ -26,6 +28,9 @@
 <script type="module" src="os_display.js"></script>
 <script type="module" src="os_cpu.js"></script>
 <script type="module" src="os_terminal.js"></script>
+
+<!-- Added your new Studio module to the stack -->
+<script type="module" src="os_studio.js"></script>
 
 <!-- The Parser Motherboard links them all -->
 <script type="module" src="os_parser.js"></script>
