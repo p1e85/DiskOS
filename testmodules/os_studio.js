@@ -1,3 +1,5 @@
+console.log("STUDIO CACHE BUSTED!");
+
 import { RAM } from './os_memory.js';
 import { GPU } from './os_display.js';
 
