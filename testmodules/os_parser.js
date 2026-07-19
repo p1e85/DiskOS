@@ -67,7 +67,7 @@ window.addEventListener('keydown', (e) => {
         
         // THE FIX: Explicitly block default browser actions for these keys.
         // This stops Backspace from triggering a phantom "Back" navigation event!
-        if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Backspace", "Enter"].includes(e.key)) {
+        if (["Space" || "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Backspace", "Enter"].includes(e.key)) {
             e.preventDefault();
         }
         
