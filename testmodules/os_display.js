@@ -42,7 +42,7 @@ export const GPU = {
         
         // Loop through the 256 tiles in the 16x16 VRAM map
         for (let i = 0; i < 256; i++) {
-            const spriteId = RAM.vram.map[i];
+            const spriteId = RAM.cart.map[i];
             
             // If the tile is 0 (empty), skip it to save CPU cycles and allow transparency
             if (spriteId === 0) continue;
@@ -63,8 +63,8 @@ export const GPU = {
 
     // Renders a single 8x8 sprite from VRAM at an exact pixel coordinate
     drawSprite(spriteId, x, y) {
-        const spriteData = RAM.vram.sprites[spriteId];
-        const palette = RAM.vram.palette;
+        const spriteData = RAM.cart.sprites[spriteId];
+        const palette = RAM.cart.palette;
         
         // Loop through the 64 pixels of the sprite
         for (let p = 0; p < 64; p++) {

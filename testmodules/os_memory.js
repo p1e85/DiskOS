@@ -31,7 +31,7 @@ export const RAM = {
     textDecor: 'none',
 
 // Video RAM for .diskCart data
-    vram: {
+    cart: {
         // The active 16-color system palette
         palette: [
             '#000000', '#1A1A24', '#555555', '#FFFFFF', 
