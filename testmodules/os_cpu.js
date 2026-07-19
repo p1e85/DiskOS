@@ -383,6 +383,28 @@ export const CPU = {
             }
             RAM.currentLineIndex++;
         }
+
+else if (cmd === "DRAW.MAP") {
+            // Strip out commas in case the user types "DRAW.MAP 10, 20" instead of "DRAW.MAP 10 20"
+            let x = parseInt(this.evaluateExpression(parts[1].replace(",", "")));
+            let y = parseInt(this.evaluateExpression(parts[2].replace(",", "")));
+            
+            import('./os_display.js').then(module => {
+                module.GPU.drawMap(x, y);
+            });
+            RAM.currentLineIndex++;
+        }
+        else if (cmd === "DRAW.SPRITE") {
+            let sId = parseInt(this.evaluateExpression(parts[1].replace(",", "")));
+            let x = parseInt(this.evaluateExpression(parts[2].replace(",", "")));
+            let y = parseInt(this.evaluateExpression(parts[3].replace(",", "")));
+            
+            import('./os_display.js').then(module => {
+                module.GPU.drawSprite(sId, x, y);
+            });
+            RAM.currentLineIndex++;
+        }
+
         else if (cmd === "DIR") {
             if (Kernel.activeDir) {
                 let files = Kernel.mountDir(Kernel.activeDir);
