@@ -49,9 +49,8 @@ const mobileKeyboard = document.getElementById('mobile-keyboard');
 
 // 1. Desktop Input & Hotkeys
 window.addEventListener('keydown', (e) => {
-    // THE FIX: If the user is typing inside the hidden mobile keyboard, 
-    // or inside the Studio's text boxes, ignore the global window keydown entirely!
-    if (e.target === mobileKeyboard || e.target.tagName.toLowerCase() === 'input') {
+    // Ignore if typing in an input box or the hidden mobile keyboard
+    if (e.target === mobileKeyboard || e.target?.tagName.toLowerCase() === 'input') {
         return; 
     }
 
@@ -65,14 +64,17 @@ window.addEventListener('keydown', (e) => {
 
     // Normal typing (only if not running and studio closed)
     if (!RAM.isRunning && !STUDIO.isOpen) {
-        if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
+        
+        // THE FIX: Explicitly block default browser actions for these keys.
+        // This stops Backspace from triggering a phantom "Back" navigation event!
+        if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Backspace", "Enter"].includes(e.key)) {
             e.preventDefault();
         }
         
         // Allowed non-character keys
         const isSpecialKey = ["Backspace", "Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key);
         
-        // Filter out mobile predictive text signatures ("Unidentified")
+        // Route the key to the terminal
         if (e.key !== "Escape" && e.key !== "Unidentified" && (e.key.length === 1 || isSpecialKey)) {
             CLI.handleKey(e.key);
         }
