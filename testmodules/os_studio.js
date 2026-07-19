@@ -13,7 +13,7 @@ export const STUDIO = {
         this.overlay.style.cssText = `
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: #0000AA; color: #FFF; font-family: monospace;
-            display: none; flex-direction: column; align-items: center; justify-content: center;
+            display: none; flex-direction: column; align-items: center; justify-content: flex-start;
             z-index: 10000; box-sizing: border-box; overflow-y: auto; padding: 20px;
         `;
 
