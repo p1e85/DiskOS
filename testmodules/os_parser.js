@@ -40,3 +40,81 @@ export const Parser = {
 APU.init();
 GPU.init();
 STUDIO.init();
+
+// =========================================================
+// DESKTOP & MOBILE INPUT HANDLING
+// =========================================================
+const canvas = document.getElementById('screen');
+const mobileKeyboard = document.getElementById('mobile-keyboard');
+
+// 1. Desktop Input & Hotkeys
+window.addEventListener('keydown', (e) => {
+    // Halt running code (PC)
+    if (e.key === "End" && RAM.isRunning) {
+        RAM.isRunning = false;
+        CLI.printLine("?BREAK");
+        CLI.printLine("READY.");
+        return; 
+    }
+
+    // Toggle Studio
+    if (e.key === "Escape") {
+        if (STUDIO.isOpen) STUDIO.close();
+        else STUDIO.open();
+        return; 
+    }
+
+    // Normal typing (only if not running and studio closed)
+    if (!RAM.isRunning && !STUDIO.isOpen) {
+        if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
+            e.preventDefault();
+        }
+        if (e.key.length === 1 || e.key === "Backspace" || e.key === "Enter") {
+            CLI.handleKey(e.key);
+        }
+    }
+});
+
+// 2. Mobile Input
+if (canvas && mobileKeyboard) {
+    // Bring up the hidden keyboard on tap
+    canvas.addEventListener('pointerdown', (e) => {
+        if (!RAM.isRunning && !STUDIO.isOpen) {
+            mobileKeyboard.focus();
+        }
+    });
+
+    // Intercept predictive text and mobile keys
+    mobileKeyboard.addEventListener('input', (e) => {
+        if (!RAM.isRunning && !STUDIO.isOpen) {
+            let val = mobileKeyboard.value;
+            if (val.length > 0) {
+                let char = val[val.length - 1]; 
+                if (char === '\n') CLI.handleKey("Enter");
+                else CLI.handleKey(char); 
+                
+                mobileKeyboard.value = ""; 
+            }
+        }
+    });
+
+    // Catch explicit backspace/enter on mobile
+    mobileKeyboard.addEventListener('keydown', (e) => {
+        if (!RAM.isRunning && !STUDIO.isOpen) {
+            if (e.key === "Backspace" || e.key === "Enter") {
+                CLI.handleKey(e.key);
+                e.preventDefault(); 
+            }
+        }
+    });
+
+    // 3-Finger Tap to Break Code (Mobile)
+    canvas.addEventListener('touchstart', (e) => {
+        if (RAM.isRunning && e.touches.length >= 3) {
+            RAM.isRunning = false; 
+            CLI.printLine("?BREAK");
+            CLI.printLine("READY.");
+            e.preventDefault(); 
+        }
+    }, { passive: false });
+}
