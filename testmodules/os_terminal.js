@@ -8,7 +8,8 @@ export const CLI = {
 
     _generatePayload() {
         if (RAM.rawBuffer.length > 0) return RAM.rawBuffer.join('\n');
-        return `TYPE: diskCODE\nCOMPATIBILITY: V1.8\n---\n` + RAM.textBuffer.map(t => `${t.line} ${t.code}`).join('\n');
+        // FIXED: Bumped to V1.9
+        return `TYPE: diskCODE\nCOMPATIBILITY: V1.9\n---\n` + RAM.textBuffer.map(t => `${t.line} ${t.code}`).join('\n');
     },
 
     // NEW: Function to snap cursor on mobile/mouse tap
@@ -25,7 +26,7 @@ export const CLI = {
     },
 
     handleKey(key) {
-if (key === "Backspace" || key === "Enter") {
+        if (key === "Backspace" || key === "Enter") {
             let now = performance.now();
             if (now - this._lastAction < 20) return; 
             this._lastAction = now;
@@ -175,11 +176,10 @@ if (key === "Backspace" || key === "Enter") {
                 RAM.vram.forEach(cell => { cell.char = ' '; cell.bg = RAM.systemBgColor; });
                 RAM.cursorX = RAM.cursorY = 0; RAM.cursorY--; 
             } 
-            // NEW: The Hook for the BIOS!
+            // FIXED: Removed the double cursor drop when closing BIOS
             else if (fwUpper === "SYS.MENU") {
                 if (typeof BIOS !== 'undefined') {
                     BIOS.toggle();
-                    RAM.cursorY--;
                 } else {
                     GPU.printLine("?SYS.MENU MODULE NOT LOADED");
                 }
