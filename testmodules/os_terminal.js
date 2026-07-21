@@ -3,6 +3,8 @@ import { GPU } from './os_display.js';
 import { CPU } from './os_cpu.js';
 
 export const CLI = {
+    _lastAction: 0,
+
     _generatePayload() {
         if (RAM.rawBuffer.length > 0) return RAM.rawBuffer.join('\n');
         return `TYPE: diskCODE\nCOMPATIBILITY: V1.8\n---\n` + RAM.textBuffer.map(t => `${t.line} ${t.code}`).join('\n');
@@ -22,6 +24,12 @@ export const CLI = {
     },
 
     handleKey(key) {
+if (key === "Backspace" || key === "Enter") {
+            let now = performance.now();
+            if (now - this._lastAction < 20) return; 
+            this._lastAction = now;
+        }
+
         if (key === "Escape") {
             if (RAM.isRunning) {
                 RAM.isRunning = RAM.waitingForKey = RAM.waitingForTimer = RAM.waitingForInput = false;
