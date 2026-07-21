@@ -10,7 +10,8 @@ export const HUB = {
         { id: 'OS', icon: '>_', name: 'TERMINAL' },
         { id: 'SPRITE', icon: '■', name: 'SPRITES' },
         { id: 'MAP', icon: '▦', name: 'MAPS' },
-        { id: 'SFX', icon: '♫', name: 'TRACKER' } // NEW: SFX Added!
+        { id: 'SFX', icon: '♫', name: 'TRACKER' },
+        { id: 'MUSIC', icon: '♬', name: 'SONGS' } // <-- NEW: Music Tracker
     ],
 
     init() {
@@ -31,8 +32,7 @@ export const HUB = {
             if (e.key === "Escape") {
                 if (typeof BIOS !== 'undefined' && BIOS.isOpen) return; 
                 if (this.activeApp === 0 && (RAM.isRunning || RAM.isCapturingRaw)) return; 
-                e.preventDefault();
-                e.stopImmediatePropagation();
+                e.preventDefault(); e.stopImmediatePropagation();
                 this.cycleApp();
             }
         }, true); 
@@ -40,21 +40,16 @@ export const HUB = {
 
     cycleApp() {
         this.activeApp = (this.activeApp + 1) % this.apps.length;
-        this.render();
-        this.launchApp(this.activeApp);
+        this.render(); this.launchApp(this.activeApp);
     },
 
     launchApp(index) {
         const app = this.apps[index];
         if (app.id === 'OS') {
             if (STUDIO.isOpen) STUDIO.toggle(); 
-        } 
-        else {
+        } else {
             if (!STUDIO.isOpen) STUDIO.toggle(app.id);
-            else {
-                STUDIO.activeMode = app.id;
-                STUDIO.buildUI();
-            }
+            else { STUDIO.activeMode = app.id; STUDIO.buildUI(); }
         }
     },
 
@@ -71,22 +66,16 @@ export const HUB = {
                         color: ${isActive ? '#000' : '#666'};
                         font-size: 24px; font-weight: bold;
                         display: flex; align-items: center; justify-content: center;
-                        border-radius: 6px;
-                        box-shadow: ${isActive ? '0 0 15px rgba(255, 176, 0, 0.4)' : 'none'};
+                        border-radius: 6px; box-shadow: ${isActive ? '0 0 15px rgba(255, 176, 0, 0.4)' : 'none'};
                         transition: all 0.1s;
                     ">${app.icon}</div>
-                    <div style="font-size: 11px; font-weight: bold; letter-spacing: 1px; color: ${isActive ? '#FFB000' : '#555'};">
-                        ${app.name}
-                    </div>
+                    <div style="font-size: 11px; font-weight: bold; letter-spacing: 1px; color: ${isActive ? '#FFB000' : '#555'};">${app.name}</div>
                 </div>
             `;
         });
 
-        this.overlay.innerHTML = html;
-        this.overlay.style.display = "flex";
-        
-        void this.overlay.offsetWidth; 
-        this.overlay.style.opacity = "1";
+        this.overlay.innerHTML = html; this.overlay.style.display = "flex";
+        void this.overlay.offsetWidth; this.overlay.style.opacity = "1";
 
         if (this.hideTimeout) clearTimeout(this.hideTimeout);
         this.hideTimeout = setTimeout(() => {

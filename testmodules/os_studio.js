@@ -1,15 +1,12 @@
 import { RAM } from './os_memory.js';
 
 export const STUDIO = {
-    isOpen: false,
-    wasRunning: false,
+    isOpen: false, wasRunning: false,
     
-    activeMode: 'SPRITE', 
-    bitMode: 8,           
-    activeColor: 1,       
-    activeSprite: 0,      
-    activeMap: 0,         
-    activeSfx: 0,         // NEW: Active Sound Effect Slot (0-63)
+    activeMode: 'SPRITE', bitMode: 8,           
+    activeColor: 1, activeSprite: 0, activeMap: 0,         
+    activeSfx: 0, 
+    activeMusic: 0, musicStamp: -1, // NEW: Music Engine States
     isDrawing: false,
 
     palette8: [
@@ -32,7 +29,8 @@ export const STUDIO = {
 
         if (!RAM.sprites) RAM.sprites = {};
         if (!RAM.maps) RAM.maps = {};
-        if (!RAM.sfx) RAM.sfx = {}; // Initialize SFX Memory
+        if (!RAM.sfx) RAM.sfx = {}; 
+        if (!RAM.music) RAM.music = {}; // NEW: Music RAM Memory
     },
 
     toggle(targetMode = 'SPRITE') {
@@ -53,15 +51,14 @@ export const STUDIO = {
         if (this.activeMode === 'SPRITE') this.buildSpriteEditor();
         else if (this.activeMode === 'MAP') this.buildMapEditor();
         else if (this.activeMode === 'SFX') this.buildSfxEditor();
+        else if (this.activeMode === 'MUSIC') this.buildMusicEditor();
     },
 
     generate256Palette() {
         let p = ['#000000']; 
         for(let r=0; r<8; r++) {
             for(let g=0; g<8; g++) {
-                for(let b=0; b<4; b++) {
-                    p.push(`rgb(${Math.floor(r*255/7)},${Math.floor(g*255/7)},${Math.floor(b*255/3)})`);
-                }
+                for(let b=0; b<4; b++) { p.push(`rgb(${Math.floor(r*255/7)},${Math.floor(g*255/7)},${Math.floor(b*255/3)})`); }
             }
         }
         return p;
@@ -70,7 +67,6 @@ export const STUDIO = {
     drawSpriteToCtx(ctx, spriteId, destX, destY, destSize) {
         const spriteData = RAM.sprites[spriteId];
         if (!spriteData) return; 
-
         const res = this.bitMode;
         const pixelSize = destSize / res;
         const colors = this.bitMode === 8 ? this.palette8 : this.generate256Palette();
@@ -107,21 +103,13 @@ export const STUDIO = {
                         <div style="margin-bottom: 10px; font-size: 12px; color: #888;">COLOR PALETTE</div>
                         <div id="palette-grid" style="display: grid; grid-template-columns: repeat(${this.bitMode === 8 ? 4 : 8}, 1fr); gap: 2px;">
                             ${colors.map((hex, i) => `
-                                <div class="palette-swatch" data-idx="${i}" style="
-                                    aspect-ratio: 1; background: ${hex}; cursor: pointer;
-                                    border: 2px solid ${this.activeColor === i ? '#FFF' : '#000'};
-                                "></div>
+                                <div class="palette-swatch" data-idx="${i}" style="aspect-ratio: 1; background: ${hex}; cursor: pointer; border: 2px solid ${this.activeColor === i ? '#FFF' : '#000'};"></div>
                             `).join('')}
                         </div>
                     </div>
                 </div>
                 <div style="flex: 1; display: flex; justify-content: center; align-items: center; background: #080808; border: 2px solid #333;">
-                    <canvas id="sprite-canvas" width="${gridRes * 20}" height="${gridRes * 20}" style="
-                        width: ${gridRes * 30}px; height: ${gridRes * 30}px; 
-                        background: #1A1A1A; border: 1px solid #444; 
-                        image-rendering: pixelated; cursor: crosshair;
-                        box-shadow: 0 0 20px rgba(0,0,0,0.5);
-                    "></canvas>
+                    <canvas id="sprite-canvas" width="${gridRes * 20}" height="${gridRes * 20}" style="width: ${gridRes * 30}px; height: ${gridRes * 30}px; background: #1A1A1A; border: 1px solid #444; image-rendering: pixelated; cursor: crosshair; box-shadow: 0 0 20px rgba(0,0,0,0.5);"></canvas>
                 </div>
                 <div style="width: 300px; display: flex; flex-direction: column; gap: 10px; background: #111; border: 2px solid #333; padding: 10px;">
                     <div style="font-size: 12px; color: #888; display: flex; justify-content: space-between;">
@@ -182,19 +170,10 @@ export const STUDIO = {
         for (let i = 0; i < 256; i++) {
             let isActive = i === this.activeSprite;
             let hasData = RAM.sprites[i] ? true : false;
-            html += `
-                <div class="sprite-slot" data-idx="${i}" style="
-                    aspect-ratio: 1; background: ${isActive ? '#FFB000' : hasData ? '#222' : '#000'};
-                    border: 1px solid ${isActive ? '#FFF' : '#333'}; cursor: pointer;
-                    display: flex; align-items: center; justify-content: center;
-                    font-size: 8px; color: ${isActive ? '#000' : '#555'};
-                ">${i}</div>
-            `;
+            html += `<div class="sprite-slot" data-idx="${i}" style="aspect-ratio: 1; background: ${isActive ? '#FFB000' : hasData ? '#222' : '#000'}; border: 1px solid ${isActive ? '#FFF' : '#333'}; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 8px; color: ${isActive ? '#000' : '#555'};">${i}</div>`;
         }
         bank.innerHTML = html;
-        document.querySelectorAll('.sprite-slot').forEach(el => {
-            el.onclick = (e) => { this.activeSprite = parseInt(e.target.dataset.idx); this.buildUI(); };
-        });
+        document.querySelectorAll('.sprite-slot').forEach(el => { el.onclick = (e) => { this.activeSprite = parseInt(e.target.dataset.idx); this.buildUI(); }; });
     },
 
     // ==========================================
@@ -214,10 +193,7 @@ export const STUDIO = {
                     <div id="map-sprite-picker" style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; overflow-y: auto; flex: 1; padding-right: 5px;"></div>
                 </div>
                 <div style="flex: 1; display: flex; justify-content: center; align-items: center; background: #080808; border: 2px solid #333;">
-                    <canvas id="map-canvas" width="512" height="512" style="
-                        width: 512px; height: 512px; background: #1A1A1A; border: 1px solid #444; 
-                        image-rendering: pixelated; cursor: crosshair; box-shadow: 0 0 20px rgba(0,0,0,0.5);
-                    "></canvas>
+                    <canvas id="map-canvas" width="512" height="512" style="width: 512px; height: 512px; background: #1A1A1A; border: 1px solid #444; image-rendering: pixelated; cursor: crosshair; box-shadow: 0 0 20px rgba(0,0,0,0.5);"></canvas>
                 </div>
                 <div style="width: 200px; display: flex; flex-direction: column; gap: 10px; background: #111; border: 2px solid #333; padding: 10px;">
                     <div style="font-size: 12px; color: #888; display: flex; justify-content: space-between;">
@@ -264,9 +240,7 @@ export const STUDIO = {
             html += `<div class="map-stamp-slot" data-idx="${i}" style="aspect-ratio: 1; background: ${isActive ? '#00E436' : hasData ? '#222' : '#000'}; border: 1px solid ${isActive ? '#FFF' : '#333'}; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 8px; color: ${isActive ? '#000' : '#555'};">${i}</div>`;
         }
         picker.innerHTML = html;
-        document.querySelectorAll('.map-stamp-slot').forEach(el => {
-            el.onclick = (e) => { this.activeSprite = parseInt(e.target.dataset.idx); this.buildUI(); };
-        });
+        document.querySelectorAll('.map-stamp-slot').forEach(el => { el.onclick = (e) => { this.activeSprite = parseInt(e.target.dataset.idx); this.buildUI(); }; });
     },
 
     renderMapBank() {
@@ -279,9 +253,7 @@ export const STUDIO = {
             html += `<div class="map-screen-slot" data-idx="${i}" style="aspect-ratio: 1; background: ${isActive ? '#00E436' : hasData ? '#222' : '#000'}; border: 1px solid ${isActive ? '#FFF' : '#333'}; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: ${isActive ? '#000' : '#555'};">${i}</div>`;
         }
         bank.innerHTML = html;
-        document.querySelectorAll('.map-screen-slot').forEach(el => {
-            el.onclick = (e) => { this.activeMap = parseInt(e.target.dataset.idx); this.buildUI(); };
-        });
+        document.querySelectorAll('.map-screen-slot').forEach(el => { el.onclick = (e) => { this.activeMap = parseInt(e.target.dataset.idx); this.buildUI(); }; });
     },
 
     renderMapCanvas() {
@@ -306,60 +278,72 @@ export const STUDIO = {
 
 
     // ==========================================
-    // 3. SFX AUDIO TRACKER LOGIC
+    // 3. SFX AUDIO ENGINE (Shared By SFX & Music)
     // ==========================================
     _initSfxSlot() {
-        if (!RAM.sfx[this.activeSfx]) {
-            RAM.sfx[this.activeSfx] = { wave: 'square', speed: 10, notes: new Array(32).fill(0) };
-        }
+        if (!RAM.sfx[this.activeSfx]) RAM.sfx[this.activeSfx] = { wave: 'square', speed: 10, notes: new Array(32).fill(0) };
         return RAM.sfx[this.activeSfx];
+    },
+
+    // The Master Async Audio Scheduler
+    scheduleSfx(sfxId, startTime) {
+        if (!RAM.sfx[sfxId]) return;
+        const data = RAM.sfx[sfxId];
+        if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        const wave = data.wave || 'square';
+        const stepTime = 0.02 * data.speed; // Speed multiplier per note
+        
+        for (let i = 0; i < 32; i++) {
+            let pitch = data.notes[i];
+            if (pitch > 0) {
+                let osc = this.audioCtx.createOscillator();
+                let gain = this.audioCtx.createGain();
+                osc.type = wave;
+                osc.frequency.value = 130.81 * Math.pow(2, (pitch - 1) / 12);
+                
+                osc.connect(gain);
+                gain.connect(this.audioCtx.destination);
+                
+                let noteTime = startTime + (i * stepTime);
+                gain.gain.setValueAtTime(0.15, noteTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, noteTime + (stepTime * 0.9));
+                
+                osc.start(noteTime);
+                osc.stop(noteTime + stepTime);
+            }
+        }
+    },
+
+    playSfx(sfxId) {
+        if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        this.scheduleSfx(sfxId, this.audioCtx.currentTime); // Schedule to play NOW
     },
 
     buildSfxEditor() {
         const sfxData = this._initSfxSlot();
-
         this.overlay.innerHTML = `
             <div style="background: #111; border-bottom: 2px solid #333; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center;">
                 <div style="color: #FF004D; font-weight: bold; font-size: 18px; letter-spacing: 1px;">♫ SFX TRACKER</div>
                 <div style="color: #888; font-size: 12px;">32-STEP SEQUENCER</div>
             </div>
-
             <div style="display: flex; flex: 1; overflow: hidden; padding: 20px; gap: 20px;">
-                
-                <!-- Left Sidebar: Tools & Synth Controls -->
                 <div style="width: 250px; display: flex; flex-direction: column; gap: 20px;">
-                    
                     <button id="btn-play-sfx" style="background: #FF004D; color: #FFF; font-weight: bold; font-size: 20px; padding: 15px; border: none; cursor: pointer; border-radius: 4px;">▶ PLAY SFX</button>
-                    
                     <div style="background: #111; border: 2px solid #333; padding: 10px;">
                         <div style="margin-bottom: 10px; font-size: 12px; color: #888;">WAVEFORM</div>
                         <div style="display: flex; flex-direction: column; gap: 5px;">
-                            ${['square', 'sawtooth', 'triangle'].map(wave => `
-                                <div class="wave-btn" data-wave="${wave}" style="
-                                    background: ${sfxData.wave === wave ? '#FF004D' : '#000'}; 
-                                    color: ${sfxData.wave === wave ? '#FFF' : '#888'};
-                                    padding: 8px; text-align: center; cursor: pointer; border: 1px solid #333;
-                                ">${wave.toUpperCase()}</div>
-                            `).join('')}
+                            ${['square', 'sawtooth', 'triangle'].map(wave => `<div class="wave-btn" data-wave="${wave}" style="background: ${sfxData.wave === wave ? '#FF004D' : '#000'}; color: ${sfxData.wave === wave ? '#FFF' : '#888'}; padding: 8px; text-align: center; cursor: pointer; border: 1px solid #333;">${wave.toUpperCase()}</div>`).join('')}
                         </div>
                     </div>
-
                     <div style="background: #111; border: 2px solid #333; padding: 10px;">
                         <div style="margin-bottom: 10px; font-size: 12px; color: #888;">SPEED (1=FAST, 20=SLOW)</div>
                         <input type="range" id="sfx-speed" min="1" max="20" value="${sfxData.speed}" style="width: 100%; accent-color: #FF004D;">
                     </div>
                 </div>
-
-                <!-- Center: 32-Step Pitch Canvas -->
                 <div style="flex: 1; display: flex; justify-content: center; align-items: center; background: #080808; border: 2px solid #333;">
-                    <canvas id="sfx-canvas" width="512" height="512" style="
-                        width: 512px; height: 512px; 
-                        background: #1A1A1A; border: 1px solid #444; 
-                        cursor: crosshair; box-shadow: 0 0 20px rgba(0,0,0,0.5);
-                    "></canvas>
+                    <canvas id="sfx-canvas" width="512" height="512" style="width: 512px; height: 512px; background: #1A1A1A; border: 1px solid #444; cursor: crosshair; box-shadow: 0 0 20px rgba(0,0,0,0.5);"></canvas>
                 </div>
-
-                <!-- Right Sidebar: 64 SFX Banks -->
                 <div style="width: 200px; display: flex; flex-direction: column; gap: 10px; background: #111; border: 2px solid #333; padding: 10px;">
                     <div style="font-size: 12px; color: #888; display: flex; justify-content: space-between;">
                         <span>SFX BANK</span><span style="color: #FF004D;">ID: ${this.activeSfx}</span>
@@ -368,42 +352,24 @@ export const STUDIO = {
                 </div>
             </div>
         `;
-
-        this.attachSfxEvents();
-        this.renderSfxBank();
-        this.renderSfxCanvas();
+        this.attachSfxEvents(); this.renderSfxBank(); this.renderSfxCanvas();
     },
 
     attachSfxEvents() {
         const sfxData = this._initSfxSlot();
-
         document.getElementById('btn-play-sfx').onclick = () => this.playSfx(this.activeSfx);
-
-        document.querySelectorAll('.wave-btn').forEach(el => {
-            el.onclick = (e) => {
-                sfxData.wave = e.target.dataset.wave;
-                this.buildUI();
-            };
-        });
-
-        document.getElementById('sfx-speed').oninput = (e) => {
-            sfxData.speed = parseInt(e.target.value);
-        };
+        document.querySelectorAll('.wave-btn').forEach(el => { el.onclick = (e) => { sfxData.wave = e.target.dataset.wave; this.buildUI(); }; });
+        document.getElementById('sfx-speed').oninput = (e) => { sfxData.speed = parseInt(e.target.value); };
 
         const canvas = document.getElementById('sfx-canvas');
         const drawNote = (e) => {
             if (!this.isDrawing) return;
             const rect = canvas.getBoundingClientRect();
-            // X is step (0-31), Y is pitch (0-31)
             const x = Math.floor((e.clientX - rect.left) / (512 / 32));
             const y = Math.floor((e.clientY - rect.top) / (512 / 32));
-            
             if (x >= 0 && x < 32 && y >= 0 && y < 32) {
-                // Pitch 0 is silence (bottom row). Pitch 31 is highest note (top row).
-                const pitchValue = (31 - y); 
-                sfxData.notes[x] = pitchValue;
-                this.renderSfxCanvas();
-                this.renderSfxBank();
+                sfxData.notes[x] = (31 - y); 
+                this.renderSfxCanvas(); this.renderSfxBank();
             }
         };
 
@@ -416,35 +382,26 @@ export const STUDIO = {
         const canvas = document.getElementById('sfx-canvas');
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
-        const stepSize = 512 / 32; // 16px
+        const stepSize = 512 / 32; 
 
         ctx.clearRect(0, 0, 512, 512);
-
-        // Draw horizontal grid lines
         ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
         for (let i = 0; i <= 32; i++) {
             ctx.beginPath(); ctx.moveTo(0, i * stepSize); ctx.lineTo(512, i * stepSize); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(i * stepSize, 0); ctx.lineTo(i * stepSize, 512); ctx.stroke();
         }
 
-        // Draw Notes
         const sfxData = this._initSfxSlot();
         for (let x = 0; x < 32; x++) {
             let pitch = sfxData.notes[x];
-            if (pitch > 0) { // 0 is silence
-                let y = 31 - pitch; // Invert so pitch 32 is at the top (y=0)
-                ctx.fillStyle = '#FF004D';
-                ctx.fillRect(x * stepSize, y * stepSize, stepSize, stepSize);
-                
-                // Draw connecting line to previous note for visual flow
+            if (pitch > 0) { 
+                let y = 31 - pitch; 
+                ctx.fillStyle = '#FF004D'; ctx.fillRect(x * stepSize, y * stepSize, stepSize, stepSize);
                 if (x > 0 && sfxData.notes[x-1] > 0) {
                     let prevY = 31 - sfxData.notes[x-1];
-                    ctx.beginPath();
-                    ctx.moveTo((x-1) * stepSize + (stepSize/2), prevY * stepSize + (stepSize/2));
+                    ctx.beginPath(); ctx.moveTo((x-1) * stepSize + (stepSize/2), prevY * stepSize + (stepSize/2));
                     ctx.lineTo(x * stepSize + (stepSize/2), y * stepSize + (stepSize/2));
-                    ctx.strokeStyle = '#FF77A8';
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
+                    ctx.strokeStyle = '#FF77A8'; ctx.lineWidth = 2; ctx.stroke();
                 }
             }
         }
@@ -460,44 +417,152 @@ export const STUDIO = {
             html += `<div class="sfx-slot" data-idx="${i}" style="aspect-ratio: 1; background: ${isActive ? '#FF004D' : hasData ? '#311' : '#000'}; border: 1px solid ${isActive ? '#FFF' : '#333'}; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: ${isActive ? '#FFF' : '#555'};">${i}</div>`;
         }
         bank.innerHTML = html;
-        document.querySelectorAll('.sfx-slot').forEach(el => {
-            el.onclick = (e) => { this.activeSfx = parseInt(e.target.dataset.idx); this.buildUI(); };
+        document.querySelectorAll('.sfx-slot').forEach(el => { el.onclick = (e) => { this.activeSfx = parseInt(e.target.dataset.idx); this.buildUI(); }; });
+    },
+
+
+    // ==========================================
+    // 4. MUSIC TRACKER LOGIC (NEW!)
+    // ==========================================
+    _initMusicSlot() {
+        if (!RAM.music[this.activeMusic]) {
+            let rows = [];
+            for (let i=0; i<32; i++) rows.push([-1, -1, -1, -1]); // 32 rows, 4 empty channels (-1)
+            RAM.music[this.activeMusic] = { speed: 8, rows: rows };
+        }
+        return RAM.music[this.activeMusic];
+    },
+
+    playPattern(patternId) {
+        if (!RAM.music[patternId]) return;
+        if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        let now = this.audioCtx.currentTime;
+        let pattern = RAM.music[patternId];
+        let rowDuration = pattern.speed * 0.05; // Music Speed dictates gap between pattern rows
+        
+        // Loop down the grid and schedule all SFX for all 4 channels!
+        for (let r=0; r<32; r++) {
+            let rowTime = now + (r * rowDuration);
+            for (let c=0; c<4; c++) {
+                let sfxId = pattern.rows[r][c];
+                if (sfxId >= 0) {
+                    this.scheduleSfx(sfxId, rowTime); 
+                }
+            }
+        }
+    },
+
+    buildMusicEditor() {
+        const musicData = this._initMusicSlot();
+
+        this.overlay.innerHTML = `
+            <div style="background: #111; border-bottom: 2px solid #333; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center;">
+                <div style="color: #29ADFF; font-weight: bold; font-size: 18px; letter-spacing: 1px;">♬ MUSIC TRACKER</div>
+                <div style="color: #888; font-size: 12px;">4-CHANNEL SEQUENCER</div>
+            </div>
+
+            <div style="display: flex; flex: 1; overflow: hidden; padding: 20px; gap: 20px;">
+                
+                <!-- Left Sidebar: SFX Picker -->
+                <div style="width: 250px; display: flex; flex-direction: column; gap: 10px; background: #111; border: 2px solid #333; padding: 10px;">
+                    <div style="font-size: 12px; color: #888; display: flex; justify-content: space-between;">
+                        <span>SFX STAMP</span><span style="color: #29ADFF;">ID: ${this.musicStamp >= 0 ? this.musicStamp : '--'}</span>
+                    </div>
+                    <div style="font-size: 10px; color: #555; text-align: center; margin-bottom: 5px;">CLICK [--] TO ERASE</div>
+                    <div id="music-sfx-picker" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; overflow-y: auto; flex: 1; padding-right: 5px;"></div>
+                </div>
+
+                <!-- Center: The Tracker Grid -->
+                <div style="flex: 1; display: flex; flex-direction: column; background: #080808; border: 2px solid #333; padding: 10px;">
+                    <div style="display: flex; border-bottom: 2px solid #333; padding-bottom: 5px; margin-bottom: 5px; color: #888; font-size: 12px; font-weight: bold;">
+                        <div style="width: 40px; text-align: center;">STEP</div>
+                        <div style="flex: 1; text-align: center; color: #FF77A8;">CH 0</div>
+                        <div style="flex: 1; text-align: center; color: #FFA300;">CH 1</div>
+                        <div style="flex: 1; text-align: center; color: #00E436;">CH 2</div>
+                        <div style="flex: 1; text-align: center; color: #29ADFF;">CH 3</div>
+                    </div>
+                    <div id="music-grid" style="flex: 1; overflow-y: auto;"></div>
+                </div>
+
+                <!-- Right Sidebar: Music Banks -->
+                <div style="width: 200px; display: flex; flex-direction: column; gap: 10px; background: #111; border: 2px solid #333; padding: 10px;">
+                    <button id="btn-play-music" style="background: #29ADFF; color: #000; font-weight: bold; font-size: 18px; padding: 15px; border: none; cursor: pointer; border-radius: 4px;">▶ PLAY PATTERN</button>
+                    
+                    <div style="background: #000; border: 1px solid #333; padding: 10px; margin-top: 10px;">
+                        <div style="margin-bottom: 10px; font-size: 12px; color: #888;">BPM / SPEED (1-20)</div>
+                        <input type="range" id="music-speed" min="1" max="20" value="${musicData.speed}" style="width: 100%; accent-color: #29ADFF;">
+                    </div>
+
+                    <div style="font-size: 12px; color: #888; display: flex; justify-content: space-between; margin-top: 10px;">
+                        <span>MUSIC BANK</span><span style="color: #29ADFF;">ID: ${this.activeMusic}</span>
+                    </div>
+                    <div id="music-bank" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; overflow-y: auto; flex: 1; padding-right: 5px;"></div>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('btn-play-music').onclick = () => this.playPattern(this.activeMusic);
+        document.getElementById('music-speed').oninput = (e) => { musicData.speed = parseInt(e.target.value); };
+
+        this.renderMusicPicker();
+        this.renderMusicBank();
+        this.renderMusicGrid();
+    },
+
+    renderMusicPicker() {
+        const picker = document.getElementById('music-sfx-picker');
+        if (!picker) return;
+        let html = `<div class="music-stamp-slot" data-idx="-1" style="aspect-ratio: 1; background: ${this.musicStamp === -1 ? '#29ADFF' : '#222'}; border: 1px solid ${this.musicStamp === -1 ? '#FFF' : '#333'}; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: ${this.musicStamp === -1 ? '#000' : '#888'};">--</div>`;
+        for (let i = 0; i < 64; i++) {
+            let isActive = i === this.musicStamp;
+            let hasData = RAM.sfx[i] && RAM.sfx[i].notes.some(n => n > 0);
+            html += `<div class="music-stamp-slot" data-idx="${i}" style="aspect-ratio: 1; background: ${isActive ? '#29ADFF' : hasData ? '#124' : '#000'}; border: 1px solid ${isActive ? '#FFF' : '#333'}; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; color: ${isActive ? '#000' : '#555'};">${i}</div>`;
+        }
+        picker.innerHTML = html;
+        document.querySelectorAll('.music-stamp-slot').forEach(el => { el.onclick = (e) => { this.musicStamp = parseInt(e.target.dataset.idx); this.buildUI(); }; });
+    },
+
+    renderMusicGrid() {
+        const grid = document.getElementById('music-grid');
+        if (!grid) return;
+        const pattern = this._initMusicSlot();
+        let html = '';
+
+        for (let r=0; r<32; r++) {
+            html += `<div style="display:flex; margin-bottom: 2px; height: 24px;">
+                <div style="width:40px; color:#555; text-align:center; line-height: 24px;">${String(r).padStart(2,'0')}</div>`;
+            for (let c=0; c<4; c++) {
+                let sfx = pattern.rows[r][c];
+                let text = sfx >= 0 ? String(sfx).padStart(2,'0') : '--';
+                let color = sfx >= 0 ? '#FFF' : '#333';
+                let bg = sfx >= 0 ? '#124' : '#0A0A0A';
+                html += `<div class="music-cell" data-r="${r}" data-c="${c}" style="flex: 1; text-align: center; background: ${bg}; color: ${color}; cursor: pointer; border: 1px solid #222; margin: 0 2px; line-height: 22px; font-weight: bold;">${text}</div>`;
+            }
+            html += `</div>`;
+        }
+        grid.innerHTML = html;
+
+        document.querySelectorAll('.music-cell').forEach(el => {
+            el.onmousedown = (e) => {
+                let r = parseInt(e.target.dataset.r);
+                let c = parseInt(e.target.dataset.c);
+                pattern.rows[r][c] = this.musicStamp; // Stamp the selected SFX ID into the timeline!
+                this.renderMusicGrid(); 
+            };
         });
     },
 
-    // The Web Audio API Synthesizer!
-    playSfx(sfxId) {
-        if (!RAM.sfx[sfxId]) return;
-        const data = RAM.sfx[sfxId];
-        
-        // Initialize AudioContext if not created yet (Browser requires user interaction first)
-        if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
-        const wave = data.wave || 'square';
-        const stepTime = 0.02 * data.speed; // Speed 1 = 0.02s per step, Speed 20 = 0.4s per step
-        
-        let now = this.audioCtx.currentTime;
-        
-        for (let i = 0; i < 32; i++) {
-            let pitch = data.notes[i];
-            if (pitch > 0) {
-                let osc = this.audioCtx.createOscillator();
-                let gain = this.audioCtx.createGain();
-                osc.type = wave;
-                
-                // Map Pitch 1-31 to actual audio frequencies (C3 to high C)
-                osc.frequency.value = 130.81 * Math.pow(2, (pitch - 1) / 12);
-                
-                osc.connect(gain);
-                gain.connect(this.audioCtx.destination);
-                
-                // Simple Volume Envelope (Prevents clicking sounds)
-                gain.gain.setValueAtTime(0.15, now + (i * stepTime));
-                gain.gain.exponentialRampToValueAtTime(0.01, now + (i * stepTime) + (stepTime * 0.9));
-                
-                osc.start(now + (i * stepTime));
-                osc.stop(now + (i * stepTime) + stepTime);
-            }
+    renderMusicBank() {
+        const bank = document.getElementById('music-bank');
+        if (!bank) return;
+        let html = '';
+        for (let i = 0; i < 16; i++) { // 16 Music Patterns
+            let isActive = i === this.activeMusic;
+            let hasData = RAM.music[i] ? true : false;
+            html += `<div class="music-screen-slot" data-idx="${i}" style="aspect-ratio: 1; background: ${isActive ? '#29ADFF' : hasData ? '#124' : '#000'}; border: 1px solid ${isActive ? '#FFF' : '#333'}; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: ${isActive ? '#000' : '#555'};">${i}</div>`;
         }
+        bank.innerHTML = html;
+        document.querySelectorAll('.music-screen-slot').forEach(el => { el.onclick = (e) => { this.activeMusic = parseInt(e.target.dataset.idx); this.buildUI(); }; });
     }
 };
