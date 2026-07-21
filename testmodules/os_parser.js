@@ -65,6 +65,39 @@ window.addEventListener('keydown', (e) => {
     // Normal typing (only if not running and studio closed)
     if (!RAM.isRunning && !STUDIO.isOpen) {
         
+        // THE FIX 1: Fixed the array syntax (commas instead of ||)
+        const systemKeys = [" ", "Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Backspace", "Enter"];
+        if (systemKeys.includes(e.key)) {
+            e.preventDefault();
+        }
+        
+        // THE FIX 2: Stop double-firing from holding the key down!
+        if (e.repeat) return;
+        
+        // Route the key to the terminal
+        if (e.key !== "Escape" && e.key !== "Unidentified" && (e.key.length === 1 || systemKeys.includes(e.key))) {
+            CLI.handleKey(e.key);
+        }
+    }
+});
+
+window.addEventListener('keydown', (e) => {
+    // Ignore if typing in an input box or the hidden mobile keyboard
+    if (e.target === mobileKeyboard || e.target?.tagName.toLowerCase() === 'input') {
+        return; 
+    }
+
+    // Halt running code (PC)
+    if (e.key === "End" && RAM.isRunning) {
+        RAM.isRunning = false;
+        CLI.printLine("?BREAK");
+        CLI.printLine("READY.");
+        return; 
+    }
+
+    // Normal typing (only if not running and studio closed)
+    if (!RAM.isRunning && !STUDIO.isOpen) {
+        
         // THE FIX: Explicitly block default browser actions for these keys.
         // This stops Backspace from triggering a phantom "Back" navigation event!
         if (["Space" || "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Backspace", "Enter"].includes(e.key)) {
