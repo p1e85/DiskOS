@@ -51,14 +51,15 @@ export const CPU = {
             RAM.callStack = []; 
             RAM.forStack = [];
             RAM.whileStack = [];
-            RAM.switchStack = []; // Tracks active switch evaluation
+            RAM.switchStack = []; 
+            RAM.ifStack = []; // NEW: Tracks IF/ELSE block fulfillment!
             
             let preservedCount = RAM.variables["SYS_FILE_COUNT"];
             let preservedFiles = RAM.variables["SYS_FILES"];
             let preservedEvent = RAM.variables["SYS_GUI_EVENT"]; 
             
             RAM.variables = {}; 
-            RAM.varTypes = {}; // NEW: Strict Type Enforcement Ledger
+            RAM.varTypes = {}; 
             
             if (preservedCount !== undefined) {
                 RAM.variables["SYS_FILE_COUNT"] = preservedCount;
@@ -79,24 +80,25 @@ export const CPU = {
         if (type === "INT") casted = Math.floor(Number(value)) || 0;
         else if (type === "FLOAT") casted = Number(value) || 0.0;
         else if (type === "BOOL") casted = (value && value !== "0" && value !== 0) ? 1 : 0;
-        else if (type === "STRING") casted = String(value).replace(/^"|"$/g, ''); // Strip outer quotes if present
-        else casted = value; // "VAR" allows dynamic typing
+        else if (type === "STRING") casted = String(value).replace(/^"|"$/g, ''); 
+        else casted = value; 
         
         RAM.variables[name] = casted;
     },
 
-    // Helper: Fast-forwards the CPU to the next block element (for IF/ELSE and SWITCH)
+    // Helper: Fast-forwards the CPU to the next block element
     _skipToNextBranch(startIndex, typesToFind) {
         let depth = 0;
         for (let i = startIndex + 1; i < RAM.textBuffer.length; i++) {
             let upper = RAM.textBuffer[i].code.trim().toUpperCase();
             
-            if (upper.startsWith("IF ") || upper.startsWith("SWITCH ")) depth++;
-            if (upper === "END IF" || upper === "END SWITCH") {
-                if (depth === 0) return i; // Jump to END
+            if (upper.startsWith("IF ") || upper.startsWith("SWITCH ")) {
+                depth++;
+            } else if (upper === "END IF" || upper === "END SWITCH") {
+                if (depth === 0 && typesToFind.includes(upper)) return i; 
+                if (depth === 0) return i; 
                 depth--;
-            }
-            if (depth === 0 && typesToFind.some(t => upper.startsWith(t))) {
+            } else if (depth === 0 && typesToFind.some(t => upper.startsWith(t))) {
                 return i;
             }
         }
@@ -111,6 +113,12 @@ export const CPU = {
 
         let currentLine = RAM.textBuffer[RAM.currentLineIndex];
         let code = currentLine.code.trim();
+
+        // Send to internal parser so IF statements can recursively call commands
+        this._executeCommand(code, currentLine.line);
+    },
+
+    _executeCommand(code, lineNum) {
         let parts = code.split(" ");
         let cmd = parts[0].toUpperCase();
 
@@ -122,7 +130,7 @@ export const CPU = {
         if (["VAR", "INT", "FLOAT", "BOOL", "STRING"].includes(cmd)) {
             let decl = code.substring(cmd.length).trim(); 
             let splitIdx = decl.indexOf("=");
-            if (splitIdx === -1) { GPU.printLine(`?MISSING ASSIGNMENT IN ${currentLine.line}\nREADY.`); RAM.isRunning = false; return; }
+            if (splitIdx === -1) { GPU.printLine(`?MISSING ASSIGNMENT IN ${lineNum}\nREADY.`); RAM.isRunning = false; return; }
             
             let vName = decl.substring(0, splitIdx).trim();
             let valExpr = decl.substring(splitIdx + 1).trim();
@@ -146,7 +154,6 @@ export const CPU = {
         // ==========================================
         // 2. UPDATING EXISTING VARIABLES
         // ==========================================
-        // Find if the line starts with an already declared variable name
         let isUpdate = Object.keys(RAM.variables).find(k => code.startsWith(k + " ") || code.startsWith(k + "=") || code.startsWith(k + "["));
         
         if (isUpdate) {
@@ -155,7 +162,7 @@ export const CPU = {
                 let leftSide = code.substring(0, splitIndex).trim();
                 let val = this.evaluateExpression(code.substring(splitIndex + 1).trim());
                 
-                if (leftSide.includes("[")) { // Array Update
+                if (leftSide.includes("[")) { 
                     let arrName = leftSide.substring(0, leftSide.indexOf("["));
                     let idx = parseInt(this.evaluateExpression(leftSide.substring(leftSide.indexOf("[") + 1, leftSide.indexOf("]"))));
                     if (Array.isArray(RAM.variables[arrName])) RAM.variables[arrName][idx] = val;
@@ -165,9 +172,9 @@ export const CPU = {
                 RAM.currentLineIndex++; return;
             }
         } 
-        // If it looks like an assignment but wasn't declared with INT/VAR/etc., crash the program!
-        else if (code.includes("=") && !code.startsWith("IF ") && !code.startsWith("FOR ") && !code.startsWith("WHILE ") && !code.includes("GET_KEY")) {
-            GPU.printLine(`?UNDECLARED VARIABLE IN ${currentLine.line}`);
+        // NEW FIX: Ignores '=' if it is inside an ELSE IF, CASE, or WHILE statement
+        else if (code.includes("=") && !code.startsWith("IF ") && !code.startsWith("ELSE ") && !code.startsWith("FOR ") && !code.startsWith("WHILE ") && !code.startsWith("CASE ") && !code.includes("GET_KEY")) {
+            GPU.printLine(`?UNDECLARED VARIABLE IN ${lineNum}`);
             GPU.printLine("USE VAR, INT, FLOAT, BOOL, OR STRING");
             GPU.printLine("READY."); RAM.isRunning = false; return;
         }
@@ -180,30 +187,59 @@ export const CPU = {
             let condStr = hasThen ? code.substring(2, code.indexOf(" THEN ")).trim() : code.substring(2).trim();
             let isTrue = (this.evaluateExpression(condStr) > 0);
 
-            if (isTrue) {
-                if (hasThen) { // Inline IF
+            if (hasThen) { // Inline IF (No END IF required)
+                if (isTrue) {
                     let action = code.substring(code.indexOf(" THEN ") + 6).trim();
-                    // Inject action temporarily to execute it
                     RAM.textBuffer.splice(RAM.currentLineIndex + 1, 0, { line: -1, code: action });
                 }
                 RAM.currentLineIndex++; return;
+            }
+
+            // Block IF
+            RAM.ifStack.push({ satisfied: isTrue });
+            if (isTrue) {
+                RAM.currentLineIndex++; return;
             } else {
-                if (hasThen) { RAM.currentLineIndex++; return; } // Skip inline
-                // Block IF: Fast-forward to next branch
                 RAM.currentLineIndex = this._skipToNextBranch(RAM.currentLineIndex, ["ELSE IF", "ELSE", "END IF"]);
                 return;
             }
         }
         
         if (cmd === "ELSE" && parts[1] === "IF") {
+            let top = RAM.ifStack.length - 1;
+            
+            // If the preceding IF or ELSE IF was already true, skip to the END IF!
+            if (top >= 0 && RAM.ifStack[top].satisfied) {
+                RAM.currentLineIndex = this._skipToNextBranch(RAM.currentLineIndex, ["END IF"]);
+                return;
+            }
+
             let condStr = code.substring(7).trim();
-            if (this.evaluateExpression(condStr) > 0) { RAM.currentLineIndex++; return; }
-            RAM.currentLineIndex = this._skipToNextBranch(RAM.currentLineIndex, ["ELSE IF", "ELSE", "END IF"]); return;
+            let isTrue = (this.evaluateExpression(condStr) > 0);
+            
+            if (isTrue) {
+                if (top >= 0) RAM.ifStack[top].satisfied = true;
+                RAM.currentLineIndex++; return;
+            } else {
+                RAM.currentLineIndex = this._skipToNextBranch(RAM.currentLineIndex, ["ELSE IF", "ELSE", "END IF"]); 
+                return;
+            }
         }
 
-        if (cmd === "ELSE") { RAM.currentLineIndex++; return; }
+        if (cmd === "ELSE") { 
+            let top = RAM.ifStack.length - 1;
+            if (top >= 0 && RAM.ifStack[top].satisfied) {
+                RAM.currentLineIndex = this._skipToNextBranch(RAM.currentLineIndex, ["END IF"]);
+                return;
+            }
+            if (top >= 0) RAM.ifStack[top].satisfied = true;
+            RAM.currentLineIndex++; return; 
+        }
         
-        if (code === "END IF") { RAM.currentLineIndex++; return; }
+        if (code === "END IF") { 
+            if (RAM.ifStack.length > 0) RAM.ifStack.pop();
+            RAM.currentLineIndex++; return; 
+        }
 
         // ==========================================
         // 4. SWITCH / CASE
@@ -218,8 +254,8 @@ export const CPU = {
         if (cmd === "CASE") {
             let activeSwitchVal = RAM.switchStack[RAM.switchStack.length - 1];
             let caseVal = this.evaluateExpression(code.substring(4).trim());
-            if (activeSwitchVal == caseVal) { RAM.currentLineIndex++; return; } // Match! Execute block.
-            else { RAM.currentLineIndex = this._skipToNextBranch(RAM.currentLineIndex, ["CASE", "DEFAULT", "END SWITCH"]); return; } // Skip
+            if (activeSwitchVal == caseVal) { RAM.currentLineIndex++; return; } 
+            else { RAM.currentLineIndex = this._skipToNextBranch(RAM.currentLineIndex, ["CASE", "DEFAULT", "END SWITCH"]); return; } 
         }
 
         if (cmd === "DEFAULT") { RAM.currentLineIndex++; return; }
@@ -256,7 +292,7 @@ export const CPU = {
                 let p2 = p1[1].split("TO");
                 if (p2.length === 2) {
                     let vName = p1[0].trim();
-                    if(!RAM.variables[vName]) { RAM.variables[vName] = 0; RAM.varTypes[vName] = "INT"; } // Auto-declare loop var
+                    if(!RAM.variables[vName]) { RAM.variables[vName] = 0; RAM.varTypes[vName] = "INT"; } 
                     RAM.variables[vName] = parseInt(this.evaluateExpression(p2[0].trim()));
                     RAM.forStack.push({ v: vName, end: p2[1].trim(), returnIndex: RAM.currentLineIndex + 1 });
                     RAM.currentLineIndex++; return;
@@ -318,7 +354,9 @@ export const CPU = {
             GPU.printLine(`?LINE NOT FOUND ERROR: ${parts[1]}\nREADY.`); RAM.isRunning = false; return;
         }
 
-        // ... (Keep existing SPRITE, MAP, SFX, MUSIC, POKE, PLOT exactly as they were in the previous update) ...
+        // ==========================================
+        // FANTASY CONSOLE COMMANDS
+        // ==========================================
         if (cmd === "SPRITE") {
             let sId = parseInt(this.evaluateExpression(parts[1]));
             let sx = parseInt(this.evaluateExpression(parts[2]));
@@ -344,8 +382,7 @@ export const CPU = {
         }
         if (cmd === "END") { RAM.isRunning = false; GPU.printLine("READY."); return; }
 
-        // Unrecognized Command
-        if (currentLine.line !== -1) GPU.printLine(`?SYNTAX ERROR IN ${currentLine.line}\nREADY.`);
+        if (lineNum !== -1) GPU.printLine(`?SYNTAX ERROR IN ${lineNum}\nREADY.`);
         RAM.isRunning = false;
     }
 };
